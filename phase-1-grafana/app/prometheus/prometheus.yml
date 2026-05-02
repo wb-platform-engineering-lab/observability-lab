@@ -1,0 +1,9 @@
+global:
+  scrape_interval: 15s       # How often Prometheus scrapes each target
+  evaluation_interval: 15s   # How often recording/alerting rules are evaluated
+
+scrape_configs:
+  - job_name: 'lumio-api'
+    static_configs:
+      - targets: ['api:8000']
+    metrics_path: '/metrics'
