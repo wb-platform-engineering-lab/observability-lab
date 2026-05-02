@@ -1,0 +1,68 @@
+# OTel Collector — Phase 11 (Dynatrace added as second backend)
+#
+# This config extends Phase 3's Collector config with one change:
+# both the traces and metrics pipelines have a second exporter — otlphttp/dynatrace.
+#
+# The application code is unchanged from Phase 3. It sends OTLP to this Collector.
+# The Collector decides where the data goes. Adding Dynatrace required:
+#   - Adding the otlphttp/dynatrace exporter block
+#   - Adding it to each pipeline's exporters list
+#   - Passing DT_ENDPOINT and DT_API_TOKEN as environment variables
+# Nothing else changed.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  # Traces → Tempo (same as Phase 3)
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics → Prometheus scrape endpoint (same as Phase 3)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    send_timestamps: true
+    metric_expiration: 3m
+
+  # Traces + Metrics → Dynatrace SaaS (NEW in Phase 11)
+  # DT_ENDPOINT format: https://{env-id}.live.dynatrace.com/api/v2/otlp
+  # Leave DT_ENDPOINT empty to disable — the pipeline will fail to start if the
+  # endpoint is unreachable, so use the conditional config pattern shown in docker-compose.yml
+  otlphttp/dynatrace:
+    endpoint: ${env:DT_ENDPOINT}
+    headers:
+      Authorization: "Api-Token ${env:DT_API_TOKEN}"
+
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [memory_limiter, batch]
+      exporters:  [otlp/tempo, otlphttp/dynatrace, debug]
+
+    metrics:
+      receivers:  [otlp]
+      processors: [memory_limiter, batch]
+      exporters:  [prometheus, otlphttp/dynatrace]
+
+  telemetry:
+    logs:
+      level: info

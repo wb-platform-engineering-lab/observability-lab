@@ -1,0 +1,10 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  # Scrape the OTel Collector's Prometheus exporter — not the app directly.
+  # The app sends metrics via OTLP to the Collector; the Collector exposes them here.
+  - job_name: otelcol
+    static_configs:
+      - targets: ["otelcol:8889"]

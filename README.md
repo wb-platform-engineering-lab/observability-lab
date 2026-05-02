@@ -33,7 +33,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 0 | 12 | Production crashed at 2am. Post-mortem: *"root cause unknown."* |
 | 1 | 12 | Metrics exist but raw PromQL at 3am is not an incident response procedure |
 | 2 | 15 | Nobody gets woken up until a customer calls |
-| 3 | 20 | Requests are slow — but which endpoint, and why? |
+| 3 | 20 | Requests are slow — metrics show the spike, but which line of code caused it? |
 | 4 | 25 | Metrics say something is wrong but logs are scattered across hosts |
 | 5 | 30 | Found the error in the logs but can't correlate it to the spike in the graph |
 | 6 | 40 | Dashboards take 30 seconds to load — PromQL queries are too expensive |
@@ -52,7 +52,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 0 | First Metrics with Prometheus | Beginner | 2–3 hrs | ✅ Complete |
 | 1 | Grafana Dashboards | Beginner | 2–3 hrs | ✅ Complete |
 | 2 | Alerting with Alertmanager | Beginner–Intermediate | 2–3 hrs | 🔜 Coming soon |
-| 3 | Application Instrumentation | Intermediate | 3–4 hrs | 🔜 Coming soon |
+| 3 | OpenTelemetry — Traces and the Collector | Intermediate | 3–4 hrs | ✅ Complete |
 | 4 | Log Aggregation with Loki | Intermediate | 3–4 hrs | 🔜 Coming soon |
 | 5 | Correlating Logs and Metrics | Intermediate–Advanced | 3–4 hrs | 🔜 Coming soon |
 | 6 | Recording Rules & Query Optimisation | Advanced | 2–3 hrs | 🔜 Coming soon |
@@ -94,6 +94,16 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │           └── dashboards/
 │               └── lumio-overview.json
 ├── phase-2-alerting/             (coming soon)
+├── phase-3-opentelemetry/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml         ← api + otelcol + tempo + prometheus + grafana
+│       ├── load.sh
+│       ├── api/                       ← OTel SDK, OTLP gRPC only
+│       ├── otelcol/config.yml         ← receivers / processors / exporters / pipelines
+│       ├── tempo/tempo.yml
+│       ├── prometheus/prometheus.yml  ← scrapes otelcol:8889 (not the app)
+│       └── grafana/
 ...
 └── phase-11-dynatrace/
     ├── README.md

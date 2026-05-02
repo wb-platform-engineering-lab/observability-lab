@@ -1,0 +1,28 @@
+# Grafana Tempo — minimal configuration for local development
+server:
+  http_listen_port: 3200
+
+# Receive traces via OTLP gRPC from the OTel Collector
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+
+ingester:
+  trace_idle_period: 10s
+  max_block_bytes: 1_000_000
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    block_retention: 1h        # keep traces for 1 hour (local lab — adjust for production)
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo/traces
+    wal:
+      path: /var/tempo/wal

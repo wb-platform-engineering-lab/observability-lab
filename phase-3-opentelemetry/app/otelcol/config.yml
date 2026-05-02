@@ -1,0 +1,63 @@
+# OpenTelemetry Collector configuration
+#
+# Pipeline:
+#   App → OTLP gRPC (4317) → [receivers] → [processors] → [exporters]
+#
+#   Traces:  → Tempo  (OTLP gRPC, port 4317)
+#   Metrics: → Prometheus scrape endpoint (port 8889)
+#
+# Grafana queries Prometheus for metrics and Tempo for traces.
+# The app sends both signals to the Collector — it does not need to know
+# about Prometheus or Tempo directly.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317    # app sends here
+      http:
+        endpoint: 0.0.0.0:4318    # alternative for HTTP/protobuf clients
+
+processors:
+  # memory_limiter must be first in every pipeline — prevents OOM under load spikes
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+
+  # batch groups spans/datapoints before export — reduces network calls and backend load
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  # Traces → Tempo
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+  # Metrics → Prometheus (Prometheus scrapes this endpoint)
+  prometheus:
+    endpoint: "0.0.0.0:8889"
+    send_timestamps: true
+    metric_expiration: 3m    # drop series after 3m of no data (prevents stale metrics)
+
+  # Log every received span to stdout — useful for debugging, disable in production
+  debug:
+    verbosity: basic
+
+service:
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [memory_limiter, batch]
+      exporters:  [otlp/tempo, debug]
+
+    metrics:
+      receivers:  [otlp]
+      processors: [memory_limiter, batch]
+      exporters:  [prometheus]
+
+  telemetry:
+    logs:
+      level: info

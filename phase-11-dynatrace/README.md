@@ -1,6 +1,8 @@
 # Phase 11 — Enterprise APM with Dynatrace
 
-> **Concepts introduced:** OpenTelemetry SDK, OTLP protocol, dual telemetry pipeline, distributed tracing, span attributes, Dynatrace OneAgent, Smartscape topology, Davis AI, SLO management, build-vs-buy analysis
+> **Prerequisites:** Phase 3 — OpenTelemetry. Phase 11 assumes the OTel SDK and Collector are already in place.
+>
+> **Concepts introduced:** Dynatrace OTLP ingest, Collector fan-out, Smartscape topology, Davis AI anomaly detection, Dynatrace SLO management, build-vs-buy analysis
 
 ---
 
@@ -8,18 +10,13 @@
 
 | Concept | What it is | Why it matters |
 |---|---|---|
-| **OpenTelemetry (OTel)** | Vendor-neutral SDK + wire protocol for metrics, logs, and traces | One instrumentation layer that works with any backend — Prometheus, Dynatrace, Datadog, Jaeger |
-| **OTLP** | OpenTelemetry Protocol — gRPC/HTTP transport for telemetry | The lingua franca between instrumented apps and observability backends |
-| **Dual pipeline** | Single OTel SDK emitting to two backends simultaneously | Migrate gradually: keep Prometheus, add Dynatrace for evaluation, compare before switching |
-| **Distributed trace** | End-to-end record of a request across services, composed of spans | Answers "where did 800ms go?" by showing exactly which function/service consumed time |
-| **Span** | A named, timed unit of work within a trace | The atom of distributed tracing — has start time, duration, status, and attributes |
-| **Span attributes** | Key-value pairs attached to a span | Make traces searchable: find all traces where `event.type = checkout` and `error = true` |
-| **Flask auto-instrumentation** | OTel middleware that creates a span for every HTTP request automatically | Zero code change — install the package, call `FlaskInstrumentor().instrument_app(app)` |
-| **Dynatrace OneAgent** | A single agent that auto-instruments the host, containers, and processes | No code changes required for basic APM — but manual OTel gives richer semantic attributes |
-| **Smartscape** | Dynatrace's real-time topology map | Shows service dependencies automatically — which services call which, and what changed before the incident |
-| **Davis AI** | Dynatrace's AI engine for anomaly detection and root cause analysis | Correlates events across all signals (metrics, traces, logs, topology) to identify root cause without manual investigation |
-| **Dynatrace SLO** | Service-level objective defined and tracked in Dynatrace | Dynatrace can automatically alert when an SLO is at risk of being missed, including burn rate calculation |
-| **Build vs buy** | Choosing between self-managed OSS stack and a commercial platform | Not a binary choice — many teams run both: OTel for instrumentation portability, a commercial backend for analysis |
+| **Collector fan-out** | One Collector pipeline exporting to two or more backends simultaneously | Adding Dynatrace requires a config change, not a code change |
+| **Dynatrace OTLP ingest** | Dynatrace SaaS accepting standard OTLP metrics and traces | No proprietary agent or SDK required — the OTel SDK from Phase 3 is enough |
+| **Smartscape** | Dynatrace's real-time topology map | Automatic service dependency discovery — no manual configuration |
+| **Davis AI** | Dynatrace's AI engine for anomaly detection and root cause analysis | Correlates signals across metrics, traces, topology, and deployments into a single Problem |
+| **Dynamic baselining** | Davis learns normal behaviour and alerts on deviations | No threshold to configure — adapts automatically as traffic patterns change |
+| **Dynatrace SLO** | Service-level objective defined and tracked in Dynatrace | Native burn rate tracking; Davis alerts when an SLO is at risk before it is missed |
+| **Build vs buy** | Choosing between a self-managed OSS stack and a commercial APM platform | The Collector fan-out pattern makes this a reversible decision |
 
 ---
 
@@ -27,13 +24,11 @@
 
 > *Lumio — 100 engineers. Twelve months after the Phase 10 capstone.*
 >
-> The full observability platform was running. Prometheus, Grafana, Loki, Alertmanager, recording rules — the whole stack. It worked. When something broke, the team knew in minutes, not hours.
+> The full observability platform was running and working. But it had become infrastructure in itself. Two engineers owned it full-time. Prometheus upgrades, Loki schema migrations, Alertmanager config refactors — the stack required continuous maintenance.
 >
-> But the stack had become infrastructure in itself. Two engineers owned it full-time. Every quarter brought a Prometheus upgrade, a Loki schema migration, an Alertmanager config refactor. When the team hit 100 engineers, the cost of running the stack was measurable: 2 FTE × €120k = €240k/year, plus compute and storage.
+> The new CTO asked: "At what headcount does it make sense to buy this instead of build it?"
 >
-> The CTO asked the question that always comes eventually: "At what size does it make more sense to buy this than to build it?"
->
-> A Dynatrace trial was spun up on a Friday afternoon. The team gave it two weeks.
+> A Dynatrace trial was spun up on a Friday afternoon. Because the team had adopted the OTel Collector in Phase 3, connecting Dynatrace required exactly one change: adding four lines to `otelcol/config.yml`. The application code was not touched.
 
 ---
 
@@ -42,99 +37,83 @@
 ```
 phase-11-dynatrace/app/
 
-  ┌──────────────────────────────────────────────────────────────────────┐
-  │  lumio-api (OpenTelemetry SDK)                                       │
-  │                                                                      │
-  │  OTel meter + tracer                                                 │
-  │        │                                                             │
-  │        ├── PrometheusMetricReader ──► GET /metrics (scrape)          │
-  │        │                                    │                        │
-  │        │                             ┌──────▼──────┐                │
-  │        │                             │ Prometheus  │◄── PromQL ──── Grafana │
-  │        │                             │   :9090     │                │
-  │        │                             └─────────────┘                │
-  │        │                                                             │
-  │        └── OTLPMetricExporter ──► Dynatrace SaaS (metrics)          │
-  │        └── OTLPSpanExporter   ──► Dynatrace SaaS (traces)           │
-  │                                                                      │
-  │  FlaskInstrumentor (auto-spans every request)                        │
-  └──────────────────────────────────────────────────────────────────────┘
+  ┌──────────────────────────────────────┐
+  │  lumio-api (unchanged from Phase 3)  │
+  │  sends OTLP gRPC → otelcol:4317      │
+  └──────────────────┬───────────────────┘
+                     │
+                     ▼
+  ┌──────────────────────────────────────────────────┐
+  │  OTel Collector                                  │
+  │                                                  │
+  │  pipelines:                                      │
+  │    traces  → [otlp/tempo, otlphttp/dynatrace]   │
+  │    metrics → [prometheus, otlphttp/dynatrace]   │
+  └───────────┬──────────────────────────┬───────────┘
+              │                          │
+       ┌──────▼──────┐          ┌────────▼────────┐
+       │  Tempo      │          │  Dynatrace SaaS │
+       │  Prometheus │          │  (metrics+traces│
+       │  Grafana    │          │  + Davis AI)    │
+       └─────────────┘          └─────────────────┘
 
-  Prometheus stack: always active
-  Dynatrace pipeline: active only when DT_ENDPOINT + DT_API_TOKEN are set
+  Left side:  self-managed OSS stack (always running)
+  Right side: Dynatrace (active when DT_ENDPOINT + DT_API_TOKEN are set)
 ```
 
-The key architectural insight: **one instrumentation layer, two consumers**. The OTel SDK does not know or care who is receiving the telemetry. Swapping or adding backends is a config change, not a code change.
+**The key architectural point:** The application has not changed. The Collector is the fan-out point. This makes the Dynatrace evaluation reversible — remove the exporter from the Collector config to stop sending data.
 
 ---
 
-## Repository structure
+## What changed between Phase 3 and Phase 11
 
+### `otelcol/config.yml` — four lines added
+
+```yaml
+exporters:
+  # ... existing exporters unchanged ...
+
+  otlphttp/dynatrace:                              # ← new
+    endpoint: ${env:DT_ENDPOINT}                  # ← new
+    headers:                                       # ← new
+      Authorization: "Api-Token ${env:DT_API_TOKEN}" # ← new
+
+service:
+  pipelines:
+    traces:
+      exporters: [otlp/tempo, otlphttp/dynatrace]  # ← added dynatrace
+    metrics:
+      exporters: [prometheus, otlphttp/dynatrace]   # ← added dynatrace
 ```
-phase-11-dynatrace/
-└── app/
-    ├── docker-compose.yml         ← DT_ENDPOINT / DT_API_TOKEN via .env
-    ├── load.sh
-    ├── api/
-    │   ├── Dockerfile
-    │   ├── app.py                 ← OTel SDK: dual pipeline + Flask auto-instrumentation
-    │   └── requirements.txt
-    ├── prometheus/
-    │   └── prometheus.yml
-    └── grafana/
-        ├── provisioning/
-        │   ├── datasources/prometheus.yml
-        │   └── dashboards/lumio.yml
-        └── dashboards/
-            └── lumio-otel.json   ← same PromQL queries, OTel-named metrics
+
+### `docker-compose.yml` — two environment variables added to the Collector service
+
+```yaml
+otelcol:
+  environment:
+    - DT_ENDPOINT=${DT_ENDPOINT:-https://placeholder...}
+    - DT_API_TOKEN=${DT_API_TOKEN:-disabled}
 ```
+
+### `api/app.py` — unchanged
+
+Zero application code changes. This is the concrete payoff of the Collector pattern from Phase 3.
 
 ---
 
 ## Challenge 1 — Run the stack without Dynatrace
 
-Before connecting Dynatrace, verify the dual pipeline works in its Prometheus-only mode.
-
-### Step 1: Start the stack
+Before connecting Dynatrace, verify Phase 3's full pipeline still works.
 
 ```bash
 cd phase-11-dynatrace/app
 docker compose up -d --build
-```
-
-### Step 2: Generate load
-
-```bash
 chmod +x load.sh && ./load.sh
 ```
 
-### Step 3: Verify metrics at the scrape endpoint
+Open **http://localhost:3000** → Dashboards → Lumio. Metrics and traces work via the same Prometheus + Tempo + Grafana stack as Phase 3.
 
-```bash
-curl -s http://localhost:8000/metrics | grep lumio
-```
-
-You will see metric names like:
-
-```
-lumio_http_requests_total{endpoint="ingest_event",method="POST",status_code="202"} 47.0
-lumio_http_request_duration_seconds_bucket{le="0.1",...} 43.0
-lumio_active_requests{endpoint="ingest_event"} 0.0
-lumio_events_processed_total{event_type="page_view"} 12.0
-```
-
-> **OTel naming to Prometheus naming:** The OTel Prometheus exporter converts instrument names automatically:
-> - Dots → underscores: `lumio.http.requests` → `lumio_http_requests`
-> - Counter → `_total` suffix appended: → `lumio_http_requests_total`
-> - Histogram unit appended: `lumio.http.request.duration` (unit=`s`) → `lumio_http_request_duration_seconds`
->
-> This means the Grafana dashboard from Phase 1 works against Phase 11's app without any changes to the PromQL queries.
-
-### Step 4: Check the Grafana dashboard
-
-Open **http://localhost:3000** (admin / lumio) → Dashboards → Lumio → **Lumio API — OpenTelemetry**.
-
-The panels use the same PromQL as Phase 1. The data comes from OTel metrics scraped by Prometheus.
+The Collector will log warnings about the Dynatrace exporter failing (the placeholder endpoint is not reachable). This is expected — the Prometheus and Tempo pipelines continue to function regardless.
 
 ---
 
@@ -142,265 +121,168 @@ The panels use the same PromQL as Phase 1. The data comes from OTel metrics scra
 
 ### Step 1: Create a free Dynatrace trial
 
-Go to **https://www.dynatrace.com/trial** and sign up. You will receive:
-- An **Environment ID** — the subdomain of your SaaS environment (e.g. `abc12345`)
-- Your environment URL: `https://abc12345.live.dynatrace.com`
+Go to **https://www.dynatrace.com/trial** and sign up (no credit card required, 15-day trial).
 
-No credit card is required. The trial runs for 15 days with full platform access.
+You will receive an Environment ID — the subdomain of your SaaS environment (e.g. `abc12345`). Your environment URL is `https://abc12345.live.dynatrace.com`.
 
 ### Step 2: Generate an API token
 
 In your Dynatrace environment: **Settings → Access tokens → Generate new token**.
 
-Give it the following scopes:
-- `metrics.ingest` — push OTLP metrics
-- `logs.ingest` — push OTLP logs (for later)
-- `openTelemetryTrace.ingest` — push OTLP traces
+Required scopes:
+- `metrics.ingest`
+- `openTelemetryTrace.ingest`
 
 Copy the token — it starts with `dt0c01.`.
 
-### Step 3: Create a .env file
+### Step 3: Create `.env`
 
 In `phase-11-dynatrace/app/`, create `.env`:
 
-```bash
+```
 DT_ENDPOINT=https://abc12345.live.dynatrace.com/api/v2/otlp
-DT_API_TOKEN=dt0c01.xxxxxxxxxxxxxxxx.yyyyyyyyyyyy
-ENVIRONMENT=development
+DT_API_TOKEN=dt0c01.xxxxxxxxxxxxxxxx.yyyyyyyy
 ```
 
-Replace `abc12345` with your environment ID and the token with your actual token.
+> **Security:** `.env` is in `.gitignore`. Never commit API tokens.
 
-> **Security:** `.env` is in `.gitignore`. Never commit API tokens. In production, inject secrets via your CI/CD secret store or a secrets manager.
-
-### Step 4: Restart with Dynatrace enabled
+### Step 4: Restart the Collector
 
 ```bash
-docker compose down
-docker compose up -d --build
+docker compose restart otelcol
 ```
 
-The API logs should show:
+Check the Collector logs for the Dynatrace exporter:
 
+```bash
+docker compose logs otelcol | grep -i dynatrace | tail -5
 ```
-Dynatrace OTLP export enabled: https://abc12345.live.dynatrace.com/api/v2/otlp
-```
 
-### Step 5: Generate load and verify in Dynatrace
+A successful export shows `"msg":"Traces Exporter"` without error messages.
 
-Run `./load.sh` for ~2 minutes. Then in your Dynatrace environment:
+### Step 5: Verify in Dynatrace
 
-**Metrics → Explore metrics** → search for `lumio`.
+After ~2 minutes of load:
 
-You should see `lumio.http.requests`, `lumio.http.request.duration`, `lumio.active_requests` and others. These are pushed every 60 seconds via OTLP.
+**Metrics → Explore metrics** → search `lumio`. You should see `lumio.http.requests`, `lumio.http.request.duration`, etc.
+
+**Applications & Microservices → Distributed Traces → Ingested traces** → service `lumio-api`.
 
 ---
 
-## Challenge 3 — Explore distributed traces
+## Challenge 3 — Smartscape: automatic topology discovery
 
-Dynatrace receives OpenTelemetry traces from the `OTLPSpanExporter`. The `FlaskInstrumentor` creates a root span for every HTTP request automatically. The manual spans in the code add business context on top.
+Navigate to **Infrastructure → Smartscape** in your Dynatrace environment.
 
-### Step 1: View traces in Dynatrace
+After a few minutes of load, Dynatrace builds a topology map automatically. For the Lumio API it shows:
+- The `lumio-api` service entity
+- Its runtime environment (Docker container)
+- The host it runs on
 
-In Dynatrace: **Applications & Microservices → Distributed Traces → Ingested traces**.
+No configuration required. For a multi-service architecture, Smartscape shows which services call which, automatically detected from the trace context propagation headers in OTLP data.
 
-Filter by service `lumio-api`. Select any trace for a `/events` request.
-
-You will see:
-- **Root span:** `POST /events` — created automatically by FlaskInstrumentor
-- **Child span:** `process-event` — created manually in `app.py`
-- **Span attributes on the child span:** `event.type`, `lumio.pipeline`
-
-### Step 2: Find all traces for failed events
-
-In the trace search, add a filter:
-
-```
-Attribute: error = true
-```
-
-This returns only the ~2% of requests that hit the simulated error path. Each trace shows:
-- `error.reason` — the specific failure reason (`validation_error`, `schema_mismatch`, or `timeout`)
-- The exact timestamp and duration
-
-Compare this to what you can do in Grafana: you can see the *rate* of errors (from metrics) and the *log lines* (from Loki) but you cannot easily correlate a specific request's full execution path. That is what traces add.
-
-### Step 3: Understand the span hierarchy
-
-Open the code at `app.py` and find the `ingest_event` route:
-
-```python
-with tracer.start_as_current_span("process-event") as span:
-    span.set_attribute("event.type", event_type)
-    span.set_attribute("lumio.pipeline", "ingest")
-    ...
-    if random.random() < 0.02:
-        span.set_attribute("error", True)
-        span.set_attribute("error.reason", reason)
-```
-
-The `with tracer.start_as_current_span(...)` block creates a child span nested under the HTTP root span. Any code inside the `with` block is part of that span. Attributes are key-value metadata — they are indexed and searchable in Dynatrace.
-
-> **Manual vs auto instrumentation:** FlaskInstrumentor handles the root HTTP span automatically. Manual spans are added only where business context matters — what type of event was processed, which pipeline handled it. This is the right division of labour: auto-instrumentation covers the frame, manual spans add meaning.
+**Compare to Grafana:** Building a service topology map in Grafana requires either Tempo's metrics_generator (generates RED metrics from traces) or manual configuration. Smartscape builds it from the OTLP data with zero configuration.
 
 ---
 
-## Challenge 4 — Davis AI: anomaly detection without alert rules
-
-One of Dynatrace's core value propositions is Davis AI — automated anomaly detection that requires no threshold configuration.
+## Challenge 4 — Davis AI: anomaly detection without thresholds
 
 ### Step 1: Observe automatic baselining
 
-After ~30 minutes of load, Dynatrace establishes a dynamic baseline for `lumio-api`:
-- Average request rate
-- Normal latency range (median + spread)
+After 30 minutes of load, navigate to **Services → lumio-api → Service health**.
+
+Dynatrace has built a dynamic baseline:
+- Normal request rate range
+- Normal latency range (with expected spread)
 - Expected error rate
 
-Navigate to **Services → lumio-api → Service health**.
+### Step 2: Trigger a simulated anomaly
 
-### Step 2: Trigger an anomaly (simulated)
+Increase traffic by changing `sleep 0.1` to `sleep 0.01` in `load.sh` for 60 seconds, then revert.
 
-Modify `load.sh` to send a burst of traffic — change `sleep 0.1` to `sleep 0.01` for 60 seconds, then back.
+In **Problems** (bell icon): Davis will detect the traffic rate anomaly and create a Problem automatically — no threshold was configured, no alert rule was written.
 
-Watch Dynatrace's Problems feed (bell icon at the top). Davis AI will detect:
-- Increased response time (if latency degrades under load)
-- Request rate anomaly (sudden spike above baseline)
+### Step 3: Compare to Phase 2 alerting
 
-It correlates these into a single **Problem** rather than multiple separate alerts. This is the key difference from Alertmanager: Alertmanager fires on thresholds you define; Davis fires on deviations from what it learned is normal.
+| | Alertmanager (Phase 2) | Davis AI (Phase 11) |
+|---|---|---|
+| How it fires | Metric crosses a hardcoded threshold | Deviation from learned baseline |
+| Threshold maintenance | Manual — needs updating as traffic scales | Automatic — baseline adjusts with traffic |
+| Alert grouping | Multiple alerts from the same incident | One Problem per incident, correlated |
+| Root cause | Manual investigation across dashboards | Davis identifies root cause automatically |
+| False positive control | Tune `for:` duration and threshold values | Sensitivity slider in Dynatrace settings |
 
-### Step 3: Compare to your Prometheus alerting
-
-In Phase 2 (Alertmanager), alerts fire when a metric crosses a hardcoded threshold. The problems with thresholds:
-- Too low → alert fatigue (fires on small, normal variations)
-- Too high → misses real incidents until they are severe
-- Need maintenance as traffic patterns change (e.g., scaling up doubles normal RPS)
-
-Davis baseline adjusts automatically. A service that normally handles 5 RPS and suddenly handles 50 RPS will trigger an anomaly. The same service after a traffic ramp to 50 RPS as the new normal will not.
+Neither is strictly better. Threshold-based alerts are more predictable — you know exactly when they fire. Davis AI fires on patterns you did not think to threshold. Most mature teams use both: threshold-based alerts for well-understood failure modes (error rate > 5%, disk > 90%), Davis AI for unknown patterns and automatic correlation.
 
 ---
 
-## Challenge 5 — Build an SLO in Dynatrace
+## Challenge 5 — Build a Dynatrace SLO
 
-In Phase 2, SLOs are tracked by querying Prometheus and building alert rules against the burn rate. Dynatrace has native SLO objects that track compliance continuously and integrate with Davis AI.
-
-### Step 1: Create a Service-level objective
-
-Navigate to **Service-level objectives → Add new SLO**.
+In Dynatrace: **Service-level objectives → Add new SLO**.
 
 | Field | Value |
 |---|---|
-| **SLO name** | Lumio API P95 latency |
-| **Type** | Service-level indicator (custom) |
+| **Name** | Lumio API P95 latency |
 | **Metric expression** | `(100)*(builtin:service.response.time.percentile(95) < 200000)` |
 | **Target** | 99.5% |
 | **Warning** | 99.9% |
 | **Timeframe** | Last 7 days |
 
-> The metric `builtin:service.response.time.percentile(95)` is a Dynatrace built-in. Value is in microseconds, so 200ms = 200000µs.
+> `builtin:service.response.time.percentile(95)` is in microseconds. 200ms = 200000µs.
 
-### Step 2: View the SLO status
+The SLO dashboard shows current compliance, remaining error budget (in minutes), and burn rate trend. Davis AI monitors this SLO automatically — if the burn rate accelerates, it creates a Problem before the SLO window closes.
 
-The SLO dashboard shows:
-- **Current compliance** — percentage of time the SLO was met in the window
-- **Error budget** — how much headroom remains (e.g., "you can be non-compliant for 43 more minutes this week")
-- **Trend** — is compliance improving or degrading?
-
-Davis AI monitors this SLO automatically. If the error budget burn rate accelerates, it creates a Problem before the SLO is missed — not after.
+**Compare to Phase 3 SLOs:** In Prometheus, SLO tracking requires recording rules for error budgets and Alertmanager rules for burn rate. In Dynatrace, the SLO object handles all of this. The trade-off is that Dynatrace SLOs are in Dynatrace's format — not portable to another platform.
 
 ---
 
-## Challenge 6 — Compare the two stacks
+## Challenge 6 — Build vs buy analysis
 
-You now have both stacks running side by side. Use this challenge to articulate the concrete trade-offs.
+You now have both stacks running simultaneously. Both receive the same telemetry. Use this challenge to make the comparison concrete.
 
-### What the self-managed stack (Phases 0–10) gives you
+### Cost of the self-managed stack
 
-| Capability | How |
+| Item | Estimate |
 |---|---|
-| Full data control | Prometheus data stays on your infrastructure |
-| No per-host/per-metric pricing | Fixed cost regardless of cardinality |
-| Customisable retention | You control how long data is kept |
-| Open standards throughout | Any tool that speaks PromQL or OTLP works |
-| No vendor lock-in | Migrate backends without re-instrumenting |
+| Prometheus + Loki + Tempo (2 × m5.large) | ~€200/month |
+| Engineering maintenance (0.5 FTE) | ~€5,000/month |
+| Alert rule tuning, upgrades, migrations | Included in above |
+| **Total** | **~€5,200/month** |
 
-### What Dynatrace adds
+At 100 engineers, the engineering cost dominates. Infrastructure is cheap; attention is not.
 
-| Capability | How |
+### Cost of Dynatrace
+
+Dynatrace pricing is based on **DPS (Davis Performance Score)** units, which scale with the volume and richness of the telemetry ingested. A rough estimate for a single moderate-traffic service:
+
+| Item | Estimate |
 |---|---|
-| Automatic topology discovery | No need to configure service maps — Smartscape builds them |
-| Davis AI root cause analysis | Finds root cause across metrics + traces + logs + topology |
-| Zero-config baselining | No threshold tuning — adapts to traffic changes automatically |
-| Native SLO tracking with burn rate | Built-in, not a Prometheus recording rule |
-| OneAgent (optional) | Instrument VMs, containers, Kubernetes without code changes |
-| Full-stack correlation | Host CPU spike → service latency spike → business metric drop in one Problem |
+| DPS consumption for lumio-api at ~10 RPS | ~€300–600/month |
+| Engineering maintenance (0.1 FTE) | ~€1,000/month |
+| **Total** | **~€1,300–1,600/month** |
 
-### What Dynatrace costs you
+At low scale, the self-managed stack is cheaper. At high scale (many services, many engineers), the engineering maintenance cost of the self-managed stack grows faster than Dynatrace's DPS cost.
 
-| Cost | Detail |
-|---|---|
-| License (SaaS) | Per-host or DPS (Davis Performance Score) pricing — significant at scale |
-| Data residency | Telemetry leaves your infrastructure to Dynatrace SaaS |
-| Vendor dependency | SLO definitions, alert rules, and dashboards are in Dynatrace's proprietary format |
-| Reduced cardinality | Dynatrace ingests high-cardinality OTel data but cost scales with DPS consumption |
-
-### The hybrid pattern (what most large teams do)
+### The decision framework
 
 ```
-App instrumentation (OTel SDK)
+< 5 services, < 20 engineers:     Self-managed stack — lower cost, higher learning value
+5–20 services, 20–100 engineers:  Hybrid — OTel SDK + Prometheus + Dynatrace for incidents
+> 20 services, > 100 engineers:   Evaluate full Dynatrace or similar, measure FTE savings
+```
+
+### The hybrid pattern (what most large teams run)
+
+```
+OTel SDK (instrumentation — vendor-neutral, in the app)
         │
-        ├── OTLP → Dynatrace SaaS          ← Davis AI, full-stack correlation, SLO tracking
-        │
-        └── Prometheus scrape → Grafana    ← Custom dashboards, cost-efficient long-term storage
+        ▼
+OTel Collector
+        ├── → Dynatrace SaaS    ← Davis AI, full-stack correlation, SLO tracking
+        └── → Prometheus        ← Custom dashboards, cheap long-term metric storage
 ```
 
-Keep both. Use Dynatrace for incident investigation and SLO management where its AI adds value. Use Prometheus for custom dashboards and cheap long-term metric storage. OTel instrumentation makes this possible without writing metrics twice.
-
----
-
-## Challenge 7 — Understand what OTel changed in the code
-
-### Step 1: Compare app.py to Phase 0
-
-Phase 0 used `prometheus_client` directly:
-```python
-REQUEST_COUNT = Counter('lumio_http_requests_total', ..., ['method', 'endpoint', 'status_code'])
-REQUEST_COUNT.labels(method=..., endpoint=..., status_code=...).inc()
-```
-
-Phase 11 uses OTel instruments:
-```python
-request_counter = meter.create_counter("lumio.http.requests", unit="requests")
-request_counter.add(1, {"method": ..., "endpoint": ..., "status_code": ...})
-```
-
-The API is similar. The difference is where the data goes: prometheus_client only knows about Prometheus; the OTel counter knows nothing about backends — it writes to whatever readers the `MeterProvider` was configured with.
-
-### Step 2: Trace the dual pipeline in code
-
-Find the `MeterProvider` setup in `app.py`:
-
-```python
-metric_readers = [prometheus_reader]         # always — Prometheus scrape
-
-if dt_enabled:
-    metric_readers.append(otlp_reader)       # optional — push to Dynatrace
-
-meter_provider = MeterProvider(resource=resource, metric_readers=metric_readers)
-```
-
-The `MeterProvider` is the composition root. All instruments (`request_counter`, `request_duration`, etc.) write to it. The readers decide what to do with the data. Adding or removing a backend is a one-line change here, not a change scattered across 20 metric call sites.
-
-### Step 3: Understand the resource
-
-```python
-resource = Resource(attributes={
-    ResourceAttributes.SERVICE_NAME:        "lumio-api",
-    ResourceAttributes.SERVICE_VERSION:     "1.0.0",
-    ResourceAttributes.DEPLOYMENT_ENVIRONMENT: ENVIRONMENT,
-})
-```
-
-The resource is metadata about the source of the telemetry — not a label on individual metrics, but context attached to every metric, trace, and log emitted by this process. In Dynatrace it appears as entity properties. In Prometheus it becomes target labels. In a trace it appears as `service.name` and `service.version` on every span.
+Keep both. Dynatrace for investigation and SLO management where its AI adds value. Prometheus for custom dashboards and long-term cheap storage. The Collector makes this possible without writing metrics twice.
 
 ---
 
@@ -408,62 +290,43 @@ The resource is metadata about the source of the telemetry — not a label on in
 
 | Command | What it does |
 |---|---|
-| `docker compose up -d --build` | Start stack (Prometheus-only if no .env) |
-| `docker compose down` | Stop and remove containers |
-| `docker compose logs -f api` | Stream API logs (shows DT enable/disable message at startup) |
-| `curl http://localhost:8000/metrics \| grep lumio` | Inspect OTel-generated Prometheus metrics |
+| `docker compose up -d --build` | Start stack |
+| `docker compose restart otelcol` | Reload Collector config (after editing config.yml or .env) |
+| `docker compose logs -f otelcol \| grep -i dynatrace` | Watch Dynatrace export status |
 
 | Dynatrace action | Where |
 |---|---|
-| Browse metrics | Metrics → Explore metrics |
-| View traces | Applications & Microservices → Distributed Traces → Ingested traces |
-| Create SLO | Service-level objectives → Add new SLO |
-| View Problems | Bell icon → Problems feed |
-| Service health | Services → lumio-api → Service health |
+| Explore metrics | Metrics → Explore metrics |
+| View ingested traces | Applications & Microservices → Distributed Traces → Ingested traces |
 | Topology map | Infrastructure → Smartscape |
-
----
-
-## What this doesn't cover
-
-| Topic | Notes |
-|---|---|
-| Dynatrace OneAgent | OneAgent is the zero-code instrumentation path for hosts and VMs. In a container lab the OTLP path is more practical and more transferable. OneAgent is covered in Dynatrace's own docs. |
-| Kubernetes operator | `dynatrace-operator` deploys OneAgent and the Dynatrace ActiveGate on Kubernetes clusters. Out of scope for a Docker Compose lab. |
-| Log forwarding via OTLP | The `logs.ingest` token scope is provisioned but this lab does not configure the OTel log exporter. Adding it follows the same pattern as the metric and trace exporters. |
-| Dynatrace Grail | Dynatrace's next-gen data lakehouse for long-term storage and DQL querying. Relevant at enterprise scale. |
+| Problems / anomalies | Bell icon → Problems |
+| Create SLO | Service-level objectives → Add new SLO |
 
 ---
 
 ## Production considerations
 
-### 1. Use OTel SDK for all new instrumentation
-Never import both `prometheus_client` and the OTel SDK in the same codebase for the same metrics. Choose OTel and use the Prometheus exporter to expose a scrape endpoint. `prometheus_client` becomes a transitive dependency of `opentelemetry-exporter-prometheus`, not a direct one.
+### 1. Disable the Dynatrace exporter at the Collector level, not the app level
+If Dynatrace is unavailable or you want to pause ingestion, remove the exporter from the Collector pipeline. The application continues running unchanged. Removing the exporter at the app level requires a redeployment.
 
-### 2. Set the resource at startup, not per-request
-The `Resource` object is expensive to construct (it reads environment variables and merges with auto-detected attributes). Create it once at module level. All metrics, traces, and logs emitted during the process lifetime will carry those attributes.
+### 2. DPS consumption scales with cardinality
+Dynatrace pricing scales with the amount and richness of data ingested. Apply the same cardinality discipline from Phase 8 — avoid high-cardinality attributes (user IDs, session tokens, request IDs) on metrics and spans. The cost impact in Dynatrace is more direct and immediate than in Prometheus.
 
-### 3. Pin OTel package versions together
-The OTel Python packages are versioned in two tracks: `opentelemetry-api` and `opentelemetry-sdk` follow `1.x.x`; instrumentation and exporter packages follow `0.x`. They must be pinned together — mixing incompatible versions causes silent export failures. Use a constraints file or lock file and upgrade the entire OTel bundle at once.
+### 3. The token is a production secret
+`DT_API_TOKEN` has write access to your Dynatrace environment. Rotate it on a schedule. Never put it in a Dockerfile ENV, committed `.env`, or application logs. Pass it via Docker secrets, Kubernetes secrets, or your secrets manager.
 
-### 4. OTLP export interval vs scrape interval
-The `PeriodicExportingMetricReader` in this lab is configured with `export_interval_millis=60_000` (1 minute). This means Dynatrace metrics are 1 minute behind Prometheus. For incident response, adjust to `15_000` (15 seconds) to match the Prometheus scrape cadence — at the cost of more API calls and DPS consumption.
-
-### 5. The token is a secret
-`DT_API_TOKEN` has write access to your Dynatrace environment's telemetry ingest endpoints. Treat it like a database password. Use Docker secrets, Kubernetes secrets, or your CI secret store — never an environment variable in a Dockerfile or committed `.env`.
-
-### 6. Dynatrace costs scale with DPS
-Dynatrace pricing is based on Davis Performance Score units, which scale with the volume of data ingested. High-cardinality OTel metrics (many unique attribute combinations) consume DPS rapidly. Apply the same cardinality discipline from Phase 8 — avoid dynamic attribute values like user IDs, request IDs, or session tokens as span or metric attributes.
+### 4. Run the Collector with redundancy
+The Collector is now a dependency for both Prometheus and Dynatrace. If it goes down, both pipelines stop. In production: run multiple Collector replicas behind a load balancer, or use the sidecar pattern (one Collector per pod) to eliminate the shared point of failure.
 
 ---
 
 ## Outcome
 
-Lumio now has a dual telemetry pipeline. The OTel SDK is the single instrumentation layer — it emits to Prometheus for dashboards and long-term storage, and to Dynatrace for AI-powered root cause analysis, automatic topology discovery, and SLO tracking.
+Dynatrace was added to the Lumio observability stack without a single line of application code changing. The OTel Collector acted as the fan-out point: the same telemetry that feeds Prometheus and Tempo also feeds Dynatrace's AI engine.
 
-The architectural decision — OTel as instrumentation, multiple backends as consumers — is the industry standard pattern at companies that operate both a self-managed Prometheus stack and a commercial APM platform. It preserves optionality: if Dynatrace is dropped tomorrow, no application code changes. If Prometheus is replaced, same story.
+The 15-day trial answered the CTO's question: Davis AI reduced MTTR by cutting the time from alert to root cause identification. The SLO management was simpler than maintaining Prometheus recording rules. The cost was equivalent to eliminating one FTE of observability maintenance. The team kept both stacks — Prometheus for dashboards and long-term storage, Dynatrace for incident intelligence.
 
-The two-week trial answered the CTO's question: Dynatrace saved time on incident investigation (Davis AI reduced MTTR by ~40% in the trial period) and eliminated the need to maintain alert rules manually. The cost was approximately equivalent to one FTE. The team committed to the hybrid pattern: Prometheus for dashboards and metrics storage, Dynatrace for incident intelligence.
+The decision was reversible because the instrumentation layer (OTel SDK + Collector) was vendor-neutral from Phase 3 onwards.
 
 ---
 

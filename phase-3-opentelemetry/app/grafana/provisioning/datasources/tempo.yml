@@ -1,0 +1,32 @@
+apiVersion: 1
+
+datasources:
+  - name: Tempo
+    type: tempo
+    uid: tempo
+    url: http://tempo:3200
+    isDefault: false
+    editable: false
+    jsonData:
+      # Trace → Metrics correlation: clicking a span opens the corresponding Prometheus query
+      tracesToMetrics:
+        datasourceUid: prometheus
+        spanStartTimeShift: "-2m"
+        spanEndTimeShift: "2m"
+        tags:
+          - key: service.name
+            value: service
+        queries:
+          - name: Request rate
+            query: sum(rate(lumio_http_requests_total[5m])) by (endpoint)
+          - name: P95 latency
+            query: histogram_quantile(0.95, sum by(le)(rate(lumio_http_request_duration_seconds_bucket[5m])))
+      # Service graph derived from trace data (requires Tempo metrics_generator — disabled here)
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      search:
+        hide: false
+      lokiSearch:
+        datasourceUid: ""
