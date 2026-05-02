@@ -4,7 +4,7 @@ A hands-on, phase-by-phase lab for mastering observability — from zero visibil
 
 Built around **Lumio** — a fictional real-time analytics SaaS — where each phase is motivated by a real operational problem the team hit as they grew.
 
-> **New here?** Read [STORY.md](./STORY.md) first — the Lumio story, why observability matters, and what to decide before Phase 0.
+> **New here?** Read [PRINCIPLES.md](./PRINCIPLES.md) first — the observability foundations, the three pillars, SLI/SLO design, and the seven principles applied in this lab. Then read [STORY.md](./STORY.md) for the Lumio backstory.
 
 ![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)
 
