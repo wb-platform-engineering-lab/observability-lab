@@ -1,0 +1,65 @@
+# Recording rules — multi-environment version
+#
+# Key difference from Phase 6: every by() clause now includes env.
+#
+# Without env in by():
+#   sum(rate(lumio_http_requests_total[5m])) by (job)
+#   → aggregates dev + prod together — one series, meaningless value
+#
+# With env in by():
+#   sum(rate(lumio_http_requests_total[5m])) by (job, env)
+#   → two series: job="lumio-api",env="dev" and job="lumio-api",env="prod"
+#
+# The naming convention <level>:<metric_name>:<aggregation> is unchanged.
+# The "level" component (e.g. "job_env") reflects the by() dimensions.
+
+groups:
+  - name: lumio.api.recording
+    rules:
+
+      # Request throughput
+      - record: job_env:lumio_http_requests_total:rate5m
+        expr: sum(rate(lumio_http_requests_total[5m])) by (job, env)
+
+      - record: job_env_endpoint:lumio_http_requests_total:rate5m
+        expr: sum(rate(lumio_http_requests_total[5m])) by (job, env, endpoint)
+
+      # Error ratio
+      - record: job_env:lumio_http_requests_error_ratio:rate5m
+        expr: |
+          sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m])) by (job, env)
+          /
+          sum(rate(lumio_http_requests_total[5m])) by (job, env)
+
+      # Latency percentiles — job level
+      - record: job_env:lumio_http_request_duration_seconds:p50rate5m
+        expr: >
+          histogram_quantile(0.50,
+            sum by(le, job, env)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: job_env:lumio_http_request_duration_seconds:p95rate5m
+        expr: >
+          histogram_quantile(0.95,
+            sum by(le, job, env)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: job_env:lumio_http_request_duration_seconds:p99rate5m
+        expr: >
+          histogram_quantile(0.99,
+            sum by(le, job, env)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      # Per-endpoint latency
+      - record: job_env_endpoint:lumio_http_request_duration_seconds:p95rate5m
+        expr: >
+          histogram_quantile(0.95,
+            sum by(le, job, env, endpoint)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      # Event pipeline
+      - record: job_env_event_type:lumio_events_processed_total:rate5m
+        expr: sum(rate(lumio_events_processed_total[5m])) by (job, env, event_type)
+
+      - record: job_env:lumio_events_errors_total:rate5m
+        expr: sum(rate(lumio_events_errors_total[5m])) by (job, env)

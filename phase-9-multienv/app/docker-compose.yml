@@ -1,0 +1,83 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Two instances of the Lumio API — one per environment.
+  # Both are built from the same image; environment differentiates them.
+  # In a real deployment these would run on separate hosts or clusters.
+  # Here we simulate them as two containers in the same Compose network.
+  # ---------------------------------------------------------------------------
+  api-dev:
+    build: ./api
+    ports:
+      - "8001:8000"
+    environment:
+      # Dev starts with a slightly elevated error rate — this is intentional.
+      # Developers frequently test error paths; it should not page on-call.
+      - ERROR_RATE=0.03
+
+  api-prod:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      - ERROR_RATE=0.01
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+
+  # Two webhook receivers — one per environment.
+  # This makes the routing immediately visible:
+  #   docker compose logs -f webhook-dev   ← only dev alerts
+  #   docker compose logs -f webhook-prod  ← only prod alerts
+  webhook-dev:
+    build: ./webhook
+    ports:
+      - "5001:5001"
+    environment:
+      - RECEIVER_NAME=dev-receiver
+
+  webhook-prod:
+    build: ./webhook
+    ports:
+      - "5002:5001"
+    environment:
+      - RECEIVER_NAME=prod-receiver
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=lumio
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:

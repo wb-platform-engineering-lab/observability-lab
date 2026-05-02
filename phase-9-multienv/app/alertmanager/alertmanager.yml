@@ -1,0 +1,100 @@
+global:
+  resolve_timeout: 5m
+
+# ---------------------------------------------------------------------------
+# Route tree — the heart of multi-environment alerting.
+#
+# Routing strategy:
+#
+#   1. Watchdog (severity=none) → null (always silenced)
+#
+#   2. env=dev → webhook-dev
+#        group_wait:      60s    (wait longer before first notification —
+#                                 dev alerts often resolve quickly)
+#        group_interval:  10m    (don't re-group too often)
+#        repeat_interval: 24h    (only notify once per day for the same alert)
+#
+#   3. env=prod, severity=critical → webhook-prod
+#        group_wait:      10s    (page quickly)
+#        group_interval:  5m
+#        repeat_interval: 15m    (keep paging until resolved)
+#
+#   4. env=prod, severity=warning → webhook-prod
+#        group_wait:      30s
+#        repeat_interval: 4h     (warn, but don't page every 15 minutes)
+#
+#   5. Catch-all → webhook-prod (prod-receiver as the safe default)
+#
+# group_by includes env so alerts from dev and prod are grouped separately.
+# Without env in group_by, a dev alert and a prod alert for the same
+# alertname would be batched into one notification — confusing.
+# ---------------------------------------------------------------------------
+route:
+  receiver: prod-receiver
+  group_by: [alertname, job, env]
+  group_wait:      30s
+  group_interval:  5m
+  repeat_interval: 4h
+
+  routes:
+    # Watchdog — always fires, always silenced
+    - matchers:
+        - severity = none
+      receiver: "null"
+
+    # Dev alerts — low urgency, infrequent notifications
+    - matchers:
+        - env = dev
+      receiver: dev-receiver
+      group_wait:      60s
+      group_interval:  10m
+      repeat_interval: 24h
+
+    # Prod critical — page on-call immediately and keep paging
+    - matchers:
+        - env = prod
+        - severity = critical
+      receiver: prod-receiver
+      group_wait:      10s
+      group_interval:  5m
+      repeat_interval: 15m
+
+    # Prod warning — notify but don't spam
+    - matchers:
+        - env = prod
+        - severity = warning
+      receiver: prod-receiver
+      group_wait:      30s
+      group_interval:  10m
+      repeat_interval: 4h
+
+# ---------------------------------------------------------------------------
+# Inhibition rules
+#
+# When an instance is completely down (LumioServiceDown), suppress the
+# downstream symptom alerts (high error rate, high latency) for that
+# instance.  Without inhibition you'd receive three simultaneous alerts
+# for what is a single root cause.
+#
+# The source_matchers / target_matchers on env ensure that a dev outage
+# does not suppress prod alerts and vice versa.
+# ---------------------------------------------------------------------------
+inhibit_rules:
+  - source_matchers:
+      - alertname = LumioServiceDown
+    target_matchers:
+      - alertname =~ "LumioHigh.*|LumioElevated.*"
+    equal: [job, env]
+
+receivers:
+  - name: "null"
+
+  - name: dev-receiver
+    webhook_configs:
+      - url: "http://webhook-dev:5001/webhook"
+        send_resolved: true
+
+  - name: prod-receiver
+    webhook_configs:
+      - url: "http://webhook-prod:5001/webhook"
+        send_resolved: true

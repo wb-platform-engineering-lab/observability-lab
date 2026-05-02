@@ -58,7 +58,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 6 | Recording Rules & Query Optimisation | Advanced | 2–3 hrs | ✅ Complete |
 | 7 | Infrastructure Metrics & Exporters | Advanced | 3–4 hrs | ✅ Complete |
 | 8 | Cardinality & Production Pitfalls | Advanced | 2–3 hrs | ✅ Complete |
-| 9 | Multi-environment Observability | Advanced | 3–4 hrs | 🔜 Coming soon |
+| 9 | Multi-environment Observability | Advanced | 3–4 hrs | ✅ Complete |
 | 10 | Capstone — Production Platform | Expert | 4–6 hrs | 🔜 Coming soon |
 | 11 | Enterprise APM with Dynatrace | Expert | 3–4 hrs | ✅ Complete |
 
@@ -179,6 +179,20 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │           └── dashboards/
 │               ├── lumio-api.json
 │               └── lumio-cardinality.json ← series count, growth rate, memory, scrape samples
+├── phase-9-multienv/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml         ← api-dev (8001), api-prod (8000), webhook-dev, webhook-prod
+│       ├── load.sh                    ← ./load.sh [dev|prod|both]
+│       ├── break.sh                   ← ./break.sh <dev|prod> <rate>
+│       ├── prometheus/
+│       │   ├── prometheus.yml         ← static_configs with env label per target
+│       │   └── rules/
+│       │       ├── lumio_recording.yml ← recording rules with env in all by() clauses
+│       │       └── lumio_alerting.yml  ← [{{ $labels.env }}] prefix in all summaries
+│       ├── alertmanager/alertmanager.yml ← routes by env; inhibition with equal: [job, env]
+│       └── grafana/dashboards/
+│           └── lumio-multienv.json    ← env template variable; dev vs prod side-by-side
 ...
 └── phase-11-dynatrace/
     ├── README.md

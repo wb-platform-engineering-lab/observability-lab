@@ -1,0 +1,54 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+  # external_labels are added to every metric AND to every alert notification
+  # AND to every remote_write payload from this Prometheus instance.
+  #
+  # In a multi-Prometheus setup (one per environment), you would set:
+  #   external_labels:
+  #     env: prod
+  #     region: us-east-1
+  #
+  # and run a separate Prometheus per environment.  In this lab we run a
+  # single Prometheus that scrapes both environments, so we add the env label
+  # at the target level (in static_configs) instead.  See the comments in
+  # each scrape_config below.
+  external_labels:
+    prometheus: lumio-lab
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/rules/lumio_recording.yml
+  - /etc/prometheus/rules/lumio_alerting.yml
+
+scrape_configs:
+  # ---------------------------------------------------------------------------
+  # Application metrics — scraped from both environments.
+  #
+  # The env label is set in static_configs.labels — Prometheus attaches it to
+  # every metric scraped from that target.  The result:
+  #
+  #   lumio_http_requests_total{job="lumio-api", env="dev",  instance="api-dev:8000",  ...}
+  #   lumio_http_requests_total{job="lumio-api", env="prod", instance="api-prod:8000", ...}
+  #
+  # Both use job="lumio-api" so recording rules (which group by job) work for
+  # both without duplication.  The env label is what separates them.
+  # ---------------------------------------------------------------------------
+  - job_name: lumio-api
+    static_configs:
+      - targets: ["api-dev:8000"]
+        labels:
+          env: dev
+      - targets: ["api-prod:8000"]
+        labels:
+          env: prod
+
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
