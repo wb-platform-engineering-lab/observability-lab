@@ -1,0 +1,27 @@
+apiVersion: 1
+
+datasources:
+  - name: Loki
+    type: loki
+    uid: loki
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      maxLines: 1000
+
+      # -----------------------------------------------------------------------
+      # Log → Trace (derived fields)
+      # Grafana scans each log line for the regex. When it matches, the
+      # captured group becomes a clickable link to Tempo.
+      #
+      # The regex matches: "trace_id":"<32 hex chars>"
+      # The captured value is the raw trace_id string.
+      # The URL opens Tempo for that trace_id.
+      # -----------------------------------------------------------------------
+      derivedFields:
+        - name: TraceID
+          matcherRegex: '"trace_id":"([a-f0-9]{32})"'
+          url: '${__value.raw}'
+          datasourceUid: tempo
+          urlDisplayLabel: "Open trace in Tempo"

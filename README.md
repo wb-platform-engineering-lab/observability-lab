@@ -35,7 +35,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 2 | 15 | Nobody gets woken up until a customer calls |
 | 3 | 20 | Requests are slow — metrics show the spike, but which line of code caused it? |
 | 4 | 25 | Metrics say something is wrong but logs are scattered across hosts |
-| 5 | 30 | Found the error in the logs but can't correlate it to the spike in the graph |
+| 5 | 30 | Three signals in three tabs — still three separate investigations |
 | 6 | 40 | Dashboards take 30 seconds to load — PromQL queries are too expensive |
 | 7 | 50 | App is healthy but the host is running out of disk |
 | 8 | 60 | Prometheus OOM killed — a label with unbounded cardinality |
@@ -54,7 +54,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 2 | Alerting with Alertmanager | Beginner–Intermediate | 2–3 hrs | ✅ Complete |
 | 3 | OpenTelemetry — Traces and the Collector | Intermediate | 3–4 hrs | ✅ Complete |
 | 4 | Log Aggregation with Loki | Intermediate | 3–4 hrs | ✅ Complete |
-| 5 | Correlating Logs and Metrics | Intermediate–Advanced | 3–4 hrs | 🔜 Coming soon |
+| 5 | Correlating Logs, Metrics, and Traces | Intermediate–Advanced | 3–4 hrs | ✅ Complete |
 | 6 | Recording Rules & Query Optimisation | Advanced | 2–3 hrs | 🔜 Coming soon |
 | 7 | Infrastructure Metrics & Exporters | Advanced | 3–4 hrs | 🔜 Coming soon |
 | 8 | Cardinality & Production Pitfalls | Advanced | 2–3 hrs | 🔜 Coming soon |
@@ -124,6 +124,17 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │       ├── loki/loki.yml
 │       ├── promtail/promtail.yml      ← Docker SD + JSON pipeline stages
 │       └── grafana/                   ← Loki datasource + logs+metrics dashboard
+├── phase-5-correlation/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml         ← all 9 services: full unified stack
+│       ├── load.sh / break.sh
+│       ├── api/                       ← Phase 3 OTel + Phase 4 logging + trace_id injection
+│       ├── otelcol/ tempo/ loki/ promtail/ prometheus/ alertmanager/ webhook/
+│       └── grafana/
+│           └── provisioning/datasources/
+│               ├── tempo.yml          ← tracesToLogs + tracesToMetrics
+│               └── loki.yml           ← derivedFields → Tempo link
 ...
 └── phase-11-dynatrace/
     ├── README.md

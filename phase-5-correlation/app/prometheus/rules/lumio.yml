@@ -1,0 +1,36 @@
+groups:
+  - name: lumio.api
+    interval: 15s
+    rules:
+      - alert: LumioServiceDown
+        expr: up{job="otelcol"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Lumio API metrics unavailable"
+          description: "OTel Collector Prometheus endpoint is unreachable."
+
+      - alert: LumioHighErrorRate
+        expr: |
+          (
+            sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m]))
+            /
+            sum(rate(lumio_http_requests_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High HTTP error rate"
+          description: "Error rate is {{ $value | humanizePercentage }}."
+
+      - alert: LumioWatchdog
+        expr: vector(1)
+        labels:
+          severity: none
+          team: platform
+        annotations:
+          summary: "Alerting pipeline heartbeat"
