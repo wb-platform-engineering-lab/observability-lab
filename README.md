@@ -17,6 +17,8 @@ Built around **Lumio** — a fictional real-time analytics SaaS — where each p
 ![Loki](https://img.shields.io/badge/Loki-F46800?style=flat&logo=grafana&logoColor=white)
 ![Python](https://img.shields.io/badge/Python-3776AB?style=flat&logo=python&logoColor=white)
 ![Docker](https://img.shields.io/badge/Docker-2496ED?style=flat&logo=docker&logoColor=white)
+![Dynatrace](https://img.shields.io/badge/Dynatrace-1496FF?style=flat&logo=dynatrace&logoColor=white)
+![OpenTelemetry](https://img.shields.io/badge/OpenTelemetry-000000?style=flat&logo=opentelemetry&logoColor=white)
 
 ---
 
@@ -39,6 +41,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 8 | 60 | Prometheus OOM killed — a label with unbounded cardinality |
 | 9 | 80 | Same alerts fire in dev and prod — oncall is tuning out the noise |
 | 10 | — | Capstone — full production observability platform |
+| 11 | 100+ | Self-managed stack costs 2 FTE/year — is there a better way? |
 
 ---
 
@@ -57,6 +60,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 8 | Cardinality & Production Pitfalls | Advanced | 2–3 hrs | 🔜 Coming soon |
 | 9 | Multi-environment Observability | Advanced | 3–4 hrs | 🔜 Coming soon |
 | 10 | Capstone — Production Platform | Expert | 4–6 hrs | 🔜 Coming soon |
+| 11 | Enterprise APM with Dynatrace | Expert | 3–4 hrs | ✅ Complete |
 
 ---
 
@@ -89,7 +93,23 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │           │   └── dashboards/lumio.yml
 │           └── dashboards/
 │               └── lumio-overview.json
-└── phase-2-alerting/             (coming soon)
+├── phase-2-alerting/             (coming soon)
+...
+└── phase-11-dynatrace/
+    ├── README.md
+    └── app/
+        ├── docker-compose.yml         ← DT_ENDPOINT / DT_API_TOKEN via .env
+        ├── load.sh
+        ├── api/
+        │   ├── Dockerfile
+        │   ├── app.py                 ← OTel SDK: dual pipeline + tracing
+        │   └── requirements.txt
+        ├── prometheus/
+        │   └── prometheus.yml
+        └── grafana/
+            ├── provisioning/
+            └── dashboards/
+                └── lumio-otel.json
 ```
 
 ---

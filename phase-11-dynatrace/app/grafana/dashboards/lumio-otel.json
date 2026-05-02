@@ -1,0 +1,271 @@
+{
+  "uid": "lumio-otel",
+  "title": "Lumio API — OpenTelemetry",
+  "tags": ["lumio", "otel", "dynatrace"],
+  "schemaVersion": 38,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-1h", "to": "now" },
+  "timepicker": {},
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": { "type": "grafana", "uid": "-- Grafana --" },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Requests per second",
+      "description": "OTel counter lumio.http.requests → lumio_http_requests_total (Prometheus exporter appends _total to counters)",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 0, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(lumio_http_requests_total[5m])) by (endpoint)",
+          "legendFormat": "{{endpoint}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "stacking": { "mode": "normal" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 2,
+      "title": "Error rate",
+      "type": "stat",
+      "gridPos": { "x": 12, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "100 * sum(rate(lumio_http_requests_total{status_code=~\"5..\"}[5m])) / sum(rate(lumio_http_requests_total[5m]))",
+          "legendFormat": "Error %",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percent",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          },
+          "mappings": []
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "colorMode": "background",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "textMode": "auto"
+      }
+    },
+    {
+      "id": 3,
+      "title": "Active requests",
+      "type": "gauge",
+      "gridPos": { "x": 18, "y": 0, "w": 6, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(lumio_active_requests)",
+          "legendFormat": "Active",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "none",
+          "min": 0,
+          "max": 50,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 20 },
+              { "color": "red", "value": 40 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "orientation": "auto",
+        "showThresholdLabels": false,
+        "showThresholdMarkers": true
+      }
+    },
+    {
+      "id": 4,
+      "title": "Request latency (P50 / P95 / P99)",
+      "description": "OTel histogram lumio.http.request.duration → lumio_http_request_duration_seconds_bucket",
+      "type": "timeseries",
+      "gridPos": { "x": 0, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "histogram_quantile(0.50, sum by(le)(rate(lumio_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "P50",
+          "refId": "A"
+        },
+        {
+          "expr": "histogram_quantile(0.95, sum by(le)(rate(lumio_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "P95",
+          "refId": "B"
+        },
+        {
+          "expr": "histogram_quantile(0.99, sum by(le)(rate(lumio_http_request_duration_seconds_bucket[5m])))",
+          "legendFormat": "P99",
+          "refId": "C"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": { "lineWidth": 2, "fillOpacity": 0 }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "P99" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "red", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "P95" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "orange", "mode": "fixed" } }]
+          },
+          {
+            "matcher": { "id": "byName", "options": "P50" },
+            "properties": [{ "id": "color", "value": { "fixedColor": "green", "mode": "fixed" } }]
+          }
+        ]
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 5,
+      "title": "Events processed by type",
+      "type": "timeseries",
+      "gridPos": { "x": 12, "y": 8, "w": 12, "h": 8 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(lumio_events_processed_total[5m])) by (event_type)",
+          "legendFormat": "{{event_type}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "custom": {
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "stacking": { "mode": "normal" }
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "bottom", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 6,
+      "title": "Event error rate",
+      "type": "stat",
+      "gridPos": { "x": 0, "y": 16, "w": 6, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(lumio_events_errors_total[5m]))",
+          "legendFormat": "Errors/s",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "ops",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "yellow", "value": 0.01 },
+              { "color": "red", "value": 0.1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"] },
+        "colorMode": "background",
+        "graphMode": "area",
+        "justifyMode": "center",
+        "textMode": "auto",
+        "orientation": "auto"
+      }
+    },
+    {
+      "id": 7,
+      "title": "Requests per second by status code",
+      "type": "timeseries",
+      "gridPos": { "x": 6, "y": 16, "w": 18, "h": 4 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "expr": "sum(rate(lumio_http_requests_total[5m])) by (status_code)",
+          "legendFormat": "HTTP {{status_code}}",
+          "refId": "A"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "lineWidth": 1, "fillOpacity": 5 }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "right" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    }
+  ]
+}

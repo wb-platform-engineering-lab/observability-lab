@@ -471,6 +471,39 @@ Adding label "customer_id" (10,000 customers) → 5,000,000 series  ← OOM
 
 ---
 
+### Decision 6 — Instrumentation layer: library vs SDK vs agent
+
+**The question:** How should the application emit telemetry — directly to a specific backend library, via a vendor-neutral SDK, or via an auto-instrumentation agent?
+
+```
+Option A: Backend-specific library (prometheus_client, statsd, etc.)
+  + Simple: one dependency, no abstraction layer
+  + Full control over metric names and label structure
+  − Locked to one backend: migrating means rewriting all instrumentation call sites
+  − No distributed tracing without adding a separate tracing library
+
+Option B: OpenTelemetry SDK (opentelemetry-api + opentelemetry-sdk)
+  + Vendor-neutral: same code emits to Prometheus, Dynatrace, Datadog, Jaeger
+  + Unified API for metrics, logs, and traces — no N separate libraries
+  + Dual pipeline: emit to two backends simultaneously during migration
+  + Auto-instrumentation available for frameworks (Flask, Django, FastAPI)
+  − Additional abstraction: debugging export failures requires understanding the SDK pipeline
+  − Package versioning complexity: core SDK (1.x) and instrumentation packages (0.x) must be upgraded together
+
+Option C: Auto-instrumentation agent (Dynatrace OneAgent, Datadog Agent, Elastic APM)
+  + Zero application code changes required
+  + Deep framework-level instrumentation (database queries, HTTP client calls)
+  − Vendor lock-in at the instrumentation layer — not just at the backend
+  − Less control over what is captured and what attributes are added
+  − Requires agent deployment alongside the application
+```
+
+**This lab's choice:** Option A (prometheus_client) in Phases 0–10 for simplicity and focus. Phase 11 migrates to Option B (OTel SDK) to demonstrate the dual pipeline and distributed tracing, and to connect to Dynatrace without abandoning the Prometheus stack.
+
+The industry direction is Option B. If you are starting a new service today, use the OTel SDK from the beginning.
+
+---
+
 ## How this lab implements each principle
 
 | Principle | Phase(s) |
@@ -491,6 +524,8 @@ Adding label "customer_id" (10,000 customers) → 5,000,000 series  ← OOM
 | Alerting strategy | 2, 3 |
 | Cardinality budget | 0, 8 |
 | Retention strategy | 0, 9 |
+| Instrumentation layer (prometheus_client vs OTel SDK) | 11 |
+| Build vs buy (self-managed stack vs commercial APM) | 11 |
 
 ---
 
