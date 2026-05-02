@@ -55,7 +55,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 3 | OpenTelemetry — Traces and the Collector | Intermediate | 3–4 hrs | ✅ Complete |
 | 4 | Log Aggregation with Loki | Intermediate | 3–4 hrs | ✅ Complete |
 | 5 | Correlating Logs, Metrics, and Traces | Intermediate–Advanced | 3–4 hrs | ✅ Complete |
-| 6 | Recording Rules & Query Optimisation | Advanced | 2–3 hrs | 🔜 Coming soon |
+| 6 | Recording Rules & Query Optimisation | Advanced | 2–3 hrs | ✅ Complete |
 | 7 | Infrastructure Metrics & Exporters | Advanced | 3–4 hrs | 🔜 Coming soon |
 | 8 | Cardinality & Production Pitfalls | Advanced | 2–3 hrs | 🔜 Coming soon |
 | 9 | Multi-environment Observability | Advanced | 3–4 hrs | 🔜 Coming soon |
@@ -135,6 +135,20 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │           └── provisioning/datasources/
 │               ├── tempo.yml          ← tracesToLogs + tracesToMetrics
 │               └── loki.yml           ← derivedFields → Tempo link
+├── phase-6-recording-rules/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml         ← api + prometheus + alertmanager + webhook + grafana
+│       ├── load.sh / break.sh
+│       ├── prometheus/
+│       │   ├── prometheus.yml         ← scrapes api + prometheus self-monitoring
+│       │   └── rules/
+│       │       ├── lumio_recording.yml ← 9 recording rules (loaded first)
+│       │       └── lumio_alerting.yml  ← alerting rules referencing recorded metrics
+│       └── grafana/
+│           └── dashboards/
+│               ├── lumio-before.json  ← raw PromQL (the problem)
+│               └── lumio-after.json   ← recording rules (the fix)
 ...
 └── phase-11-dynatrace/
     ├── README.md

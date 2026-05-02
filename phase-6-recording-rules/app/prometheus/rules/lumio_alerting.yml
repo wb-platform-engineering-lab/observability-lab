@@ -1,0 +1,102 @@
+# Alerting rules for the Lumio API
+#
+# All rate/ratio expressions reference pre-computed recording rules, NOT raw
+# PromQL.  This means:
+#
+#   1. Alert evaluation is a label lookup against a stored time series — O(1)
+#      instead of O(series × windows).
+#
+#   2. The recording rule expression and the alert threshold are separate
+#      concerns — you can tune one without touching the other.
+#
+#   3. The same recorded metric can feed multiple alerts (error rate is used by
+#      both the critical and warning error-rate alerts below) without re-running
+#      the expensive rate() twice.
+#
+# Rule ordering: prometheus.yml loads lumio_recording.yml first, so every
+# recorded metric below is available at evaluation time.
+
+groups:
+  - name: lumio.api.alerting
+    rules:
+
+      # -------------------------------------------------------------------
+      # Service availability
+      # -------------------------------------------------------------------
+      - alert: LumioServiceDown
+        expr: up{job="lumio-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Lumio API is down"
+          description: >
+            The Prometheus scrape target {{ $labels.instance }} has been
+            unreachable for more than 1 minute.
+
+      # -------------------------------------------------------------------
+      # Error rate — references job:lumio_http_requests_error_ratio:rate5m
+      #
+      # Before recording rules this alert ran:
+      #   sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m])) by (job)
+      #   /
+      #   sum(rate(lumio_http_requests_total[5m])) by (job)
+      # on every evaluation cycle.  Now it reads a single stored series.
+      # -------------------------------------------------------------------
+      - alert: LumioHighErrorRate
+        expr: >
+          job:lumio_http_requests_error_ratio:rate5m{job="lumio-api"} > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Lumio error rate above 5%"
+          description: >
+            {{ $labels.job }} error rate is
+            {{ $value | humanizePercentage }} over the last 5 minutes.
+
+      - alert: LumioElevatedErrorRate
+        expr: >
+          job:lumio_http_requests_error_ratio:rate5m{job="lumio-api"} > 0.01
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Lumio error rate above 1%"
+          description: >
+            {{ $labels.job }} error rate is
+            {{ $value | humanizePercentage }} over the last 5 minutes.
+
+      # -------------------------------------------------------------------
+      # Latency — references job:lumio_http_request_duration_seconds:p95rate5m
+      #
+      # histogram_quantile() against raw bucket series is the single most
+      # expensive operation in the Prometheus query engine.  Using the recorded
+      # metric converts every alert evaluation into a single series scan.
+      # -------------------------------------------------------------------
+      - alert: LumioHighP95Latency
+        expr: >
+          job:lumio_http_request_duration_seconds:p95rate5m{job="lumio-api"} > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Lumio P95 latency above 500ms"
+          description: >
+            95th-percentile request duration for {{ $labels.job }} is
+            {{ $value | humanizeDuration }} (threshold: 500ms).
+
+      # -------------------------------------------------------------------
+      # Dead man's switch (Watchdog)
+      # Always firing — routes to a null receiver so alerting infrastructure
+      # health is continuously verified.
+      # -------------------------------------------------------------------
+      - alert: LumioWatchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting pipeline is alive"
+          description: >
+            This alert always fires.  If it stops appearing in the webhook
+            receiver the alerting pipeline has broken.

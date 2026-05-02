@@ -1,0 +1,75 @@
+global:
+  resolve_timeout: 5m
+
+# ---------------------------------------------------------------------------
+# Route tree
+#
+# Alertmanager matches incoming alerts top-to-bottom through the route tree.
+# The first matching route wins. If no child route matches, the root route
+# handles the alert.
+#
+# Each route specifies:
+#   matchers        — label selectors (AND logic)
+#   receiver        — which notification channel to use
+#   group_by        — labels to group alerts by into one notification
+#   group_wait      — wait this long for more alerts before sending the first notification
+#   group_interval  — how long to wait before sending a new notification for a group
+#   repeat_interval — re-notify this often while the alert is still firing
+# ---------------------------------------------------------------------------
+route:
+  group_by: ["alertname", "team"]
+  group_wait: 30s
+  group_interval: 5m
+  repeat_interval: 1h
+  receiver: default
+
+  routes:
+    # Watchdog: suppress from normal alerting — it goes nowhere (null receiver).
+    # In production, point this at your on-call tool's heartbeat endpoint instead.
+    - matchers:
+        - alertname = "LumioWatchdog"
+      receiver: "null"
+
+    # Critical alerts: shorter group_wait so they fire faster
+    - matchers:
+        - severity = "critical"
+      receiver: webhook
+      group_wait: 10s
+      repeat_interval: 15m
+
+    # Warning alerts
+    - matchers:
+        - severity = "warning"
+      receiver: webhook
+      repeat_interval: 30m
+
+# ---------------------------------------------------------------------------
+# Receivers — where notifications are sent
+# ---------------------------------------------------------------------------
+receivers:
+  - name: "null"   # deliberate no-op
+
+  - name: default
+    webhook_configs:
+      - url: "http://webhook:5001/alerts"
+        send_resolved: true
+
+  - name: webhook
+    webhook_configs:
+      - url: "http://webhook:5001/alerts"
+        send_resolved: true
+
+# ---------------------------------------------------------------------------
+# Inhibition rules
+#
+# When a source alert is firing, matching target alerts are suppressed.
+# This prevents alert storms: if the service is completely down, you do not
+# also need separate pages for high error rate and high latency — those are
+# consequences, not independent problems.
+# ---------------------------------------------------------------------------
+inhibit_rules:
+  - source_matchers:
+      - alertname = "LumioServiceDown"
+    target_matchers:
+      - alertname =~ "LumioHigh.*|LumioElevated.*"
+    equal: ["team"]

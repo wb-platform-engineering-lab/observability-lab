@@ -1,0 +1,25 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+# Load order matters: recording rules must be evaluated before alerting rules
+# that reference them. List recording rules first.
+rule_files:
+  - /etc/prometheus/rules/lumio_recording.yml
+  - /etc/prometheus/rules/lumio_alerting.yml
+
+scrape_configs:
+  - job_name: lumio-api
+    static_configs:
+      - targets: ["api:8000"]
+
+  # Scrape Prometheus itself — exposes query duration, series count, rule
+  # evaluation timing, and other internal metrics used in Challenge 8.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
