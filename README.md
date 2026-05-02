@@ -57,7 +57,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 5 | Correlating Logs, Metrics, and Traces | Intermediate–Advanced | 3–4 hrs | ✅ Complete |
 | 6 | Recording Rules & Query Optimisation | Advanced | 2–3 hrs | ✅ Complete |
 | 7 | Infrastructure Metrics & Exporters | Advanced | 3–4 hrs | ✅ Complete |
-| 8 | Cardinality & Production Pitfalls | Advanced | 2–3 hrs | 🔜 Coming soon |
+| 8 | Cardinality & Production Pitfalls | Advanced | 2–3 hrs | ✅ Complete |
 | 9 | Multi-environment Observability | Advanced | 3–4 hrs | 🔜 Coming soon |
 | 10 | Capstone — Production Platform | Expert | 4–6 hrs | 🔜 Coming soon |
 | 11 | Enterprise APM with Dynatrace | Expert | 3–4 hrs | ✅ Complete |
@@ -163,6 +163,22 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │           └── dashboards/
 │               ├── lumio-api.json     ← application metrics
 │               └── infra-overview.json ← host + container infrastructure dashboard
+├── phase-8-cardinality/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml
+│       ├── load.sh / break.sh
+│       ├── cardinality.sh              ← unique X-User-ID per request (triggers explosion)
+│       ├── api/
+│       │   ├── app.py                  ← BUGGY: user_id label on lumio_http_requests_total
+│       │   └── app_fixed.py            ← FIXED: user_id removed, moved to structured logs
+│       ├── prometheus/
+│       │   ├── prometheus.yml          ← includes commented-out labeldrop hotfix
+│       │   └── rules/lumio_alerting.yml ← PrometheusHighCardinality + CardinalityExplosion alerts
+│       └── grafana/
+│           └── dashboards/
+│               ├── lumio-api.json
+│               └── lumio-cardinality.json ← series count, growth rate, memory, scrape samples
 ...
 └── phase-11-dynatrace/
     ├── README.md

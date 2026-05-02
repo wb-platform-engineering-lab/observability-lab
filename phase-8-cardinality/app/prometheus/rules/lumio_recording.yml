@@ -1,0 +1,102 @@
+# Recording rules for the Lumio API
+#
+# Naming convention:  <level>:<metric_name>:<aggregation>
+#
+#   level       — the label(s) the result is aggregated by (e.g. "job", "job_endpoint")
+#   metric_name — the base metric being summarised
+#   aggregation — the operation + window (e.g. "rate5m", "p95rate5m", "ratio5m")
+#
+# Why this convention matters:
+#   - The recorded metric name tells you what it contains without reading the expr.
+#   - Alert rules, dashboards, and other recording rules can all reference the same
+#     recorded metric — the expensive expr is evaluated once, used many times.
+#   - Consistent naming makes it easy to grep for all pre-computed rate metrics:
+#       promtool query instant http://localhost:9090 'job:.*:rate5m'
+#
+# Evaluation interval inherits from global (15s) unless overridden here.
+# For dashboard pre-computation, matching the scrape interval (15s) is ideal.
+
+groups:
+  - name: lumio.api.recording
+    rules:
+
+      # -------------------------------------------------------------------
+      # Request throughput
+      # Raw query (runs on every dashboard load):
+      #   sum(rate(lumio_http_requests_total[5m])) by (endpoint)
+      #
+      # Cost: Prometheus must iterate all time series matching
+      #   lumio_http_requests_total, compute the per-second rate for each
+      #   series over 5m of data, then aggregate. At high cardinality this
+      #   is expensive — and it runs once per panel per dashboard refresh.
+      #
+      # Recorded: evaluated once per 15s regardless of how many dashboards
+      # are open or how many users are viewing them.
+      # -------------------------------------------------------------------
+      - record: job_endpoint:lumio_http_requests_total:rate5m
+        expr: sum(rate(lumio_http_requests_total[5m])) by (job, endpoint)
+
+      # Total rate (no endpoint dimension) — used by alerting rules
+      - record: job:lumio_http_requests_total:rate5m
+        expr: sum(rate(lumio_http_requests_total[5m])) by (job)
+
+      # -------------------------------------------------------------------
+      # Error ratio
+      # Raw query:
+      #   sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m]))
+      #   / sum(rate(lumio_http_requests_total[5m]))
+      #
+      # Two rate() calls, a regex label match, and a division — evaluated
+      # at query time on every dashboard refresh and on every alert evaluation.
+      # Recording it means the division is pre-computed and stored.
+      # -------------------------------------------------------------------
+      - record: job:lumio_http_requests_error_ratio:rate5m
+        expr: |
+          sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m])) by (job)
+          /
+          sum(rate(lumio_http_requests_total[5m])) by (job)
+
+      # -------------------------------------------------------------------
+      # Latency percentiles — the most expensive queries in the codebase
+      #
+      # histogram_quantile() must iterate every bucket series, sort by le,
+      # then interpolate. For a histogram with 11 default buckets across
+      # multiple endpoints and methods, this touches hundreds of series.
+      #
+      # Pre-computing P50/P95/P99 reduces the dashboard query to a simple
+      # label lookup against a Gauge-type recorded metric.
+      # -------------------------------------------------------------------
+      - record: job:lumio_http_request_duration_seconds:p50rate5m
+        expr: >
+          histogram_quantile(0.50,
+            sum by(le, job)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: job:lumio_http_request_duration_seconds:p95rate5m
+        expr: >
+          histogram_quantile(0.95,
+            sum by(le, job)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: job:lumio_http_request_duration_seconds:p99rate5m
+        expr: >
+          histogram_quantile(0.99,
+            sum by(le, job)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      # Per-endpoint latency — higher cardinality, kept separate so the
+      # low-cardinality job-level rules above stay cheap for alerting.
+      - record: job_endpoint:lumio_http_request_duration_seconds:p95rate5m
+        expr: >
+          histogram_quantile(0.95,
+            sum by(le, job, endpoint)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      # -------------------------------------------------------------------
+      # Event pipeline throughput
+      # -------------------------------------------------------------------
+      - record: job_event_type:lumio_events_processed_total:rate5m
+        expr: sum(rate(lumio_events_processed_total[5m])) by (job, event_type)
+
+      - record: job:lumio_events_errors_total:rate5m
+        expr: sum(rate(lumio_events_errors_total[5m])) by (job)

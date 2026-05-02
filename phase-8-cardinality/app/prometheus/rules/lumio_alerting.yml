@@ -1,0 +1,114 @@
+# Alerting rules for Lumio API + cardinality health
+#
+# Phase 8 adds two new alert families:
+#   - PrometheusHighCardinality: warns when series count crosses a threshold
+#   - CardinalityExplosion: critical when new series are being created rapidly
+#
+# These two alerts together provide defence-in-depth:
+#   The rate alert (CardinalityExplosion) fires within minutes of a label
+#   being introduced.  The threshold alert (PrometheusHighCardinality)
+#   acts as a safety net if the rate returns to zero but the absolute count
+#   stays high.
+
+groups:
+  - name: lumio.api.alerting
+    rules:
+
+      - alert: LumioServiceDown
+        expr: up{job="lumio-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Lumio API is down"
+          description: >
+            The Prometheus scrape target {{ $labels.instance }} has been
+            unreachable for more than 1 minute.
+
+      - alert: LumioHighErrorRate
+        expr: >
+          job:lumio_http_requests_error_ratio:rate5m{job="lumio-api"} > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Lumio error rate above 5%"
+          description: >
+            {{ $labels.job }} error rate is {{ $value | humanizePercentage }}.
+
+      - alert: LumioElevatedErrorRate
+        expr: >
+          job:lumio_http_requests_error_ratio:rate5m{job="lumio-api"} > 0.01
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Lumio error rate above 1%"
+          description: >
+            {{ $labels.job }} error rate is {{ $value | humanizePercentage }}.
+
+      - alert: LumioHighP95Latency
+        expr: >
+          job:lumio_http_request_duration_seconds:p95rate5m{job="lumio-api"} > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Lumio P95 latency above 500ms"
+          description: >
+            P95 latency for {{ $labels.job }} is {{ $value | humanizeDuration }}.
+
+      - alert: LumioWatchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting pipeline is alive"
+
+  # ---------------------------------------------------------------------------
+  # Cardinality health
+  # ---------------------------------------------------------------------------
+  - name: lumio.cardinality.alerting
+    rules:
+
+      # Threshold alert — fires when the absolute series count is too high.
+      # 10 000 is a safe warning level for this lab (normal is ~200–400 series).
+      # In production, tune to your baseline × 2-3x as the warning threshold.
+      - alert: PrometheusHighCardinality
+        expr: prometheus_tsdb_head_series > 10000
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Prometheus head series count high: {{ $value | humanize }}"
+          description: >
+            {{ $value | humanize }} active time series in the TSDB head block.
+            Normal range for this lab: 200–400 series.
+            Investigate at http://localhost:9090/tsdb-status — look for a metric
+            name with an unexpectedly high series count.
+
+      # Rate alert — fires when new series are being created rapidly.
+      # This is the early-warning signal: it fires within 2 minutes of a
+      # high-cardinality label being introduced, before the absolute count
+      # becomes dangerous.
+      #
+      # > 50 new series/minute is the threshold.  Tune for your scrape interval
+      # and expected label set growth (e.g. new endpoints added to a rolling
+      # deployment may briefly create new series).
+      - alert: CardinalityExplosion
+        expr: >
+          rate(prometheus_tsdb_head_series[5m]) * 60 > 50
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Series growing at {{ $value | humanize }}/min — cardinality explosion"
+          description: >
+            New Prometheus time series are being created at
+            {{ $value | humanize }} per minute.
+            A high-cardinality label was almost certainly introduced recently.
+            Check http://localhost:9090/tsdb-status immediately and look for
+            a metric with a sudden spike in its series count.
+            Hotfix: add a labeldrop metric_relabel_config in prometheus.yml
+            for the offending label, then reload with:
+              curl -X POST http://localhost:9090/-/reload

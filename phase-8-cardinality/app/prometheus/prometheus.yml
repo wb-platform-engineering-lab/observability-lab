@@ -1,0 +1,39 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+rule_files:
+  - /etc/prometheus/rules/lumio_recording.yml
+  - /etc/prometheus/rules/lumio_alerting.yml
+
+scrape_configs:
+  - job_name: lumio-api
+    static_configs:
+      - targets: ["api:8000"]
+    # -------------------------------------------------------------------------
+    # HOTFIX (Challenge 4): uncomment the metric_relabel_configs block below,
+    # then reload Prometheus with:
+    #   curl -X POST http://localhost:9090/-/reload
+    #
+    # This drops the user_id label BEFORE Prometheus writes any series to the
+    # TSDB.  The app continues sending user_id values — Prometheus silently
+    # discards them.  The result: lumio_http_requests_total collapses back to
+    # (method × endpoint × status_code) — bounded cardinality.
+    #
+    # This is a hotfix, not a fix.  The app is still computing and sending the
+    # label; the waste is in the scrape cycle, not the storage layer.  Challenge
+    # 6 shows the correct long-term fix: remove user_id from the metric entirely.
+    # -------------------------------------------------------------------------
+    # metric_relabel_configs:
+    #   - regex: user_id
+    #     action: labeldrop
+
+  # Prometheus scrapes itself — needed for the cardinality dashboard panels.
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
