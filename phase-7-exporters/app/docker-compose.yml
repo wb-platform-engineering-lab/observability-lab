@@ -1,0 +1,98 @@
+services:
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=7d
+      - --web.enable-lifecycle
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+
+  webhook:
+    build: ./webhook
+    ports:
+      - "5001:5001"
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=lumio
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+
+  # ---------------------------------------------------------------------------
+  # node-exporter — exposes host OS metrics from /proc and /sys
+  #
+  # On Docker Desktop (Mac/Windows) this exposes the Linux VM metrics, not
+  # the host OS.  The metrics are still real and the alerting rules will fire
+  # correctly — the "host" is just the VM rather than your Mac.
+  # ---------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      # Exclude pseudo-filesystems — they inflate the series count without
+      # providing useful storage information.
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    pid: host
+    network_mode: host
+    restart: unless-stopped
+
+  # ---------------------------------------------------------------------------
+  # cadvisor — exposes per-container resource metrics from the Docker daemon
+  #
+  # Requires privileged mode to read cgroup metrics.
+  # On macOS/Docker Desktop: works for container-level metrics but some
+  # host-level collectors are unavailable.
+  # ---------------------------------------------------------------------------
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    privileged: true
+    restart: unless-stopped
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  grafana_data:

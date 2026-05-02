@@ -1,0 +1,119 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "Lumio API — application metrics using pre-computed recording rules.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    {
+      "title": "Infrastructure →",
+      "url": "/d/lumio-infra",
+      "type": "link",
+      "targetBlank": false,
+      "tooltip": "Host and container resource metrics"
+    }
+  ],
+  "panels": [
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] },
+          "unit": "reqps", "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 0 },
+      "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+      "title": "Request Rate",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_requests_total:rate5m{job=\"lumio-api\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] },
+          "unit": "percentunit", "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 0 },
+      "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+      "title": "Error Rate",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_requests_error_ratio:rate5m{job=\"lumio-api\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "red", "value": 0.5 }] },
+          "unit": "s", "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 12, "y": 0 },
+      "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+      "title": "P95 Latency",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p95rate5m{job=\"lumio-api\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "red", "value": 0.5 }] },
+          "unit": "s", "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 18, "y": 0 },
+      "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "background" },
+      "title": "P99 Latency",
+      "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p99rate5m{job=\"lumio-api\"}", "legendFormat": "{{job}}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
+      "id": 5,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Request Rate by Endpoint",
+      "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job_endpoint:lumio_http_requests_total:rate5m{job=\"lumio-api\"}", "legendFormat": "{{endpoint}}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
+      "id": 6,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Latency Percentiles",
+      "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p50rate5m{job=\"lumio-api\"}", "legendFormat": "P50", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p95rate5m{job=\"lumio-api\"}", "legendFormat": "P95", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p99rate5m{job=\"lumio-api\"}", "legendFormat": "P99", "refId": "C" }
+      ]
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 38,
+  "tags": ["lumio", "api"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Lumio API",
+  "uid": "lumio-api",
+  "version": 1
+}

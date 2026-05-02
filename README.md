@@ -56,7 +56,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 4 | Log Aggregation with Loki | Intermediate | 3–4 hrs | ✅ Complete |
 | 5 | Correlating Logs, Metrics, and Traces | Intermediate–Advanced | 3–4 hrs | ✅ Complete |
 | 6 | Recording Rules & Query Optimisation | Advanced | 2–3 hrs | ✅ Complete |
-| 7 | Infrastructure Metrics & Exporters | Advanced | 3–4 hrs | 🔜 Coming soon |
+| 7 | Infrastructure Metrics & Exporters | Advanced | 3–4 hrs | ✅ Complete |
 | 8 | Cardinality & Production Pitfalls | Advanced | 2–3 hrs | 🔜 Coming soon |
 | 9 | Multi-environment Observability | Advanced | 3–4 hrs | 🔜 Coming soon |
 | 10 | Capstone — Production Platform | Expert | 4–6 hrs | 🔜 Coming soon |
@@ -149,6 +149,20 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │           └── dashboards/
 │               ├── lumio-before.json  ← raw PromQL (the problem)
 │               └── lumio-after.json   ← recording rules (the fix)
+├── phase-7-exporters/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml         ← adds node-exporter + cAdvisor services
+│       ├── load.sh / break.sh / fill_disk.sh
+│       ├── prometheus/
+│       │   ├── prometheus.yml         ← 4 scrape jobs + cAdvisor relabelling
+│       │   └── rules/
+│       │       ├── infra_recording.yml ← CPU/mem/disk/network/container recording rules
+│       │       └── infra_alerting.yml  ← NodeDiskFilling (predict_linear), memory, CPU alerts
+│       └── grafana/
+│           └── dashboards/
+│               ├── lumio-api.json     ← application metrics
+│               └── infra-overview.json ← host + container infrastructure dashboard
 ...
 └── phase-11-dynatrace/
     ├── README.md

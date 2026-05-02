@@ -1,0 +1,57 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+# Load order: recording rules must be evaluated before alerting rules
+# that reference them.
+rule_files:
+  - /etc/prometheus/rules/lumio_recording.yml
+  - /etc/prometheus/rules/infra_recording.yml
+  - /etc/prometheus/rules/lumio_alerting.yml
+  - /etc/prometheus/rules/infra_alerting.yml
+
+scrape_configs:
+  # Application metrics — instrumented by the app itself
+  - job_name: lumio-api
+    static_configs:
+      - targets: ["api:8000"]
+
+  # Host OS metrics — scraped from node_exporter running on the host network
+  # node_exporter uses host networking (network_mode: host in compose) so it
+  # is reachable via the Docker host gateway.
+  - job_name: node
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+    # Relabel: carry the hostname as the 'instance' label instead of
+    # host.docker.internal:9100 which isn't human-readable.
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: "lumio-host"
+
+  # Per-container resource metrics from cAdvisor
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    # Drop the high-cardinality cAdvisor metrics we don't need in this lab.
+    # In production you'd keep more of these; here we keep CPU, memory,
+    # filesystem, and network per container.
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "container_(cpu_usage_seconds_total|memory_usage_bytes|fs_usage_bytes|network_receive_bytes_total|network_transmit_bytes_total)"
+        action: keep
+      # Drop the empty container name — it represents the host cgroup root,
+      # not an individual container.
+      - source_labels: [container]
+        regex: ""
+        action: drop
+
+  # Prometheus self-monitoring (for rule evaluation duration panels)
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]
