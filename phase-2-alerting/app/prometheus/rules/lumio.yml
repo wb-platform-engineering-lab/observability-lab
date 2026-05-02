@@ -1,0 +1,92 @@
+groups:
+  - name: lumio.api
+    interval: 15s   # override for faster lab feedback; omit in production (uses global)
+    rules:
+
+      # -----------------------------------------------------------------------
+      # Service availability
+      # -----------------------------------------------------------------------
+      - alert: LumioServiceDown
+        expr: up{job="lumio-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "Lumio API is unreachable"
+          description: >
+            Prometheus has not been able to scrape the Lumio API for 1 minute.
+            All other alerts for this service are suppressed while this is firing
+            (see inhibit_rules in alertmanager.yml).
+          runbook: "https://wiki.lumio.io/runbooks/service-down"
+
+      # -----------------------------------------------------------------------
+      # Error rate — two thresholds, two severities
+      # -----------------------------------------------------------------------
+      - alert: LumioHighErrorRate
+        expr: |
+          (
+            sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m]))
+            /
+            sum(rate(lumio_http_requests_total[5m]))
+          ) > 0.05
+        for: 2m
+        labels:
+          severity: critical
+          team: platform
+        annotations:
+          summary: "High HTTP error rate on Lumio API"
+          description: >
+            Error rate is {{ $value | humanizePercentage }}, above the 5% critical threshold.
+            Customers are actively receiving errors.
+
+      - alert: LumioElevatedErrorRate
+        expr: |
+          (
+            sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m]))
+            /
+            sum(rate(lumio_http_requests_total[5m]))
+          ) > 0.01
+        for: 2m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "Elevated HTTP error rate on Lumio API"
+          description: >
+            Error rate is {{ $value | humanizePercentage }}, above the 1% warning threshold.
+
+      # -----------------------------------------------------------------------
+      # Latency
+      # -----------------------------------------------------------------------
+      - alert: LumioHighP95Latency
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by(le)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          ) > 0.5
+        for: 5m
+        labels:
+          severity: warning
+          team: platform
+        annotations:
+          summary: "High P95 latency on Lumio API"
+          description: >
+            P95 latency is {{ $value | humanizeDuration }}, above the 500ms warning threshold.
+
+      # -----------------------------------------------------------------------
+      # Dead man's switch — always firing.
+      # Send this to a watchdog receiver (PagerDuty watchdog, Opsgenie heartbeat, etc.).
+      # If this alert STOPS firing, your alerting pipeline is broken.
+      # -----------------------------------------------------------------------
+      - alert: LumioWatchdog
+        expr: vector(1)
+        labels:
+          severity: none
+          team: platform
+        annotations:
+          summary: "Alerting pipeline heartbeat"
+          description: >
+            This alert always fires. Its absence means Prometheus or Alertmanager
+            has stopped working. Configure your on-call tool to page if this
+            heartbeat is not received within 2× its expected interval.

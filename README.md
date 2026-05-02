@@ -51,9 +51,9 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 |---|---|---|---|---|
 | 0 | First Metrics with Prometheus | Beginner | 2–3 hrs | ✅ Complete |
 | 1 | Grafana Dashboards | Beginner | 2–3 hrs | ✅ Complete |
-| 2 | Alerting with Alertmanager | Beginner–Intermediate | 2–3 hrs | 🔜 Coming soon |
+| 2 | Alerting with Alertmanager | Beginner–Intermediate | 2–3 hrs | ✅ Complete |
 | 3 | OpenTelemetry — Traces and the Collector | Intermediate | 3–4 hrs | ✅ Complete |
-| 4 | Log Aggregation with Loki | Intermediate | 3–4 hrs | 🔜 Coming soon |
+| 4 | Log Aggregation with Loki | Intermediate | 3–4 hrs | ✅ Complete |
 | 5 | Correlating Logs and Metrics | Intermediate–Advanced | 3–4 hrs | 🔜 Coming soon |
 | 6 | Recording Rules & Query Optimisation | Advanced | 2–3 hrs | 🔜 Coming soon |
 | 7 | Infrastructure Metrics & Exporters | Advanced | 3–4 hrs | 🔜 Coming soon |
@@ -93,7 +93,17 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │           │   └── dashboards/lumio.yml
 │           └── dashboards/
 │               └── lumio-overview.json
-├── phase-2-alerting/             (coming soon)
+├── phase-2-alerting/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml
+│       ├── load.sh
+│       ├── break.sh                   ← triggers a simulated incident
+│       ├── api/                       ← adds /admin/set-error-rate endpoint
+│       ├── prometheus/rules/lumio.yml ← alerting rules
+│       ├── alertmanager/
+│       │   └── alertmanager.yml       ← route tree + receivers + inhibit_rules
+│       └── webhook/                   ← logs received alerts to stdout
 ├── phase-3-opentelemetry/
 │   ├── README.md
 │   └── app/
@@ -104,6 +114,16 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │       ├── tempo/tempo.yml
 │       ├── prometheus/prometheus.yml  ← scrapes otelcol:8889 (not the app)
 │       └── grafana/
+├── phase-4-loki/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml         ← adds loki + promtail to phase-2 stack
+│       ├── load.sh
+│       ├── break.sh
+│       ├── api/                       ← adds structured JSON logging
+│       ├── loki/loki.yml
+│       ├── promtail/promtail.yml      ← Docker SD + JSON pipeline stages
+│       └── grafana/                   ← Loki datasource + logs+metrics dashboard
 ...
 └── phase-11-dynatrace/
     ├── README.md
