@@ -1,0 +1,39 @@
+# OTel Collector — Phase 10 Capstone
+#
+# Traces only.  Metrics are handled directly by prometheus_client and
+# scraped from the api's /metrics endpoint — no need to funnel them
+# through the Collector.  This keeps the pipeline simple and lets
+# Prometheus's native scraping (with relabelling, recording rules, etc.)
+# work without translation.
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  memory_limiter:
+    check_interval: 1s
+    limit_mib: 256
+  batch:
+    timeout: 5s
+    send_batch_size: 512
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      insecure: true
+
+service:
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [memory_limiter, batch]
+      exporters:  [otlp/tempo]
+  telemetry:
+    logs:
+      level: warn

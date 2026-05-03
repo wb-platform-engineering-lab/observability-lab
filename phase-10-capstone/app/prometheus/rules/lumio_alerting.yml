@@ -1,0 +1,47 @@
+groups:
+  - name: lumio.api.alerting
+    rules:
+
+      - alert: LumioServiceDown
+        expr: up{job="lumio-api"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Lumio API is down"
+          description: >
+            Prometheus cannot scrape {{ $labels.instance }}.
+
+      - alert: LumioHighErrorRate
+        expr: job:lumio_http_requests_error_ratio:rate5m{job="lumio-api"} > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Error rate above 5%"
+          description: "Error rate is {{ $value | humanizePercentage }}."
+
+      - alert: LumioElevatedErrorRate
+        expr: job:lumio_http_requests_error_ratio:rate5m{job="lumio-api"} > 0.01
+        for: 2m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Error rate above 1%"
+          description: "Error rate is {{ $value | humanizePercentage }}."
+
+      - alert: LumioHighP95Latency
+        expr: job:lumio_http_request_duration_seconds:p95rate5m{job="lumio-api"} > 0.5
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "P95 latency above 500ms"
+          description: "P95 is {{ $value | humanizeDuration }}."
+
+      - alert: LumioWatchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting pipeline is alive"

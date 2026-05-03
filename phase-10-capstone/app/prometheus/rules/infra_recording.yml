@@ -1,0 +1,136 @@
+# Recording rules for host and container infrastructure metrics
+#
+# Why record infrastructure metrics?
+#
+#   Infrastructure recording rules serve two goals beyond dashboard performance:
+#
+#   1. Normalisation — raw node_exporter metrics are counters or absolute values.
+#      Recording rules pre-compute the derived metrics dashboards and alerts
+#      actually need (utilization ratios, rates), keeping alert expressions clean.
+#
+#   2. Cardinality management — cAdvisor emits high-cardinality metrics with
+#      labels like id, image, name, and pod.  Recording rules let you aggregate
+#      down to just the labels that matter (container name) once, rather than
+#      pulling all labels into every alert evaluation.
+#
+# Naming follows the same convention as lumio_recording.yml:
+#   <level>:<metric_name>:<aggregation>
+
+groups:
+  - name: lumio.infra.recording
+    rules:
+
+      # -------------------------------------------------------------------
+      # CPU utilisation
+      #
+      # node_cpu_seconds_total is a counter with a mode label:
+      #   user, system, iowait, irq, softirq, steal, idle, nice
+      #
+      # Utilisation = 1 - (idle rate / total rate)
+      # We compute it per instance and average across all CPU cores.
+      #
+      # Raw query on every dashboard refresh:
+      #   1 - avg by(instance)(rate(node_cpu_seconds_total{mode="idle"}[5m]))
+      # -------------------------------------------------------------------
+      - record: instance:node_cpu_utilization:ratio5m
+        expr: >
+          1 - avg by(instance)(
+            rate(node_cpu_seconds_total{mode="idle", job="node"}[5m])
+          )
+
+      # CPU broken down by mode — useful for diagnosing iowait spikes
+      # (disk contention) vs user spikes (application load) vs system spikes
+      # (kernel overhead).
+      - record: instance_mode:node_cpu_seconds_total:rate5m
+        expr: >
+          avg by(instance, mode)(
+            rate(node_cpu_seconds_total{job="node"}[5m])
+          )
+
+      # -------------------------------------------------------------------
+      # Memory utilisation
+      #
+      # node_memory_MemAvailable_bytes is the kernel's estimate of how much
+      # memory is available for new allocations without swapping.  It accounts
+      # for reclaimable page cache, so it is more accurate than
+      # MemFree + Buffers + Cached.
+      #
+      # Utilisation = 1 - (available / total)
+      # -------------------------------------------------------------------
+      - record: instance:node_memory_utilization:ratio
+        expr: >
+          1 - (
+            node_memory_MemAvailable_bytes{job="node"}
+            /
+            node_memory_MemTotal_bytes{job="node"}
+          )
+
+      # -------------------------------------------------------------------
+      # Filesystem utilisation
+      #
+      # node_filesystem_avail_bytes is available space for non-root users
+      # (excludes reserved blocks).  Use this rather than node_filesystem_free_bytes
+      # because it reflects what the application actually has access to.
+      #
+      # Keeps the mountpoint label so we can alert per filesystem.
+      # The fstype filter excludes tmpfs, devtmpfs, etc.
+      # -------------------------------------------------------------------
+      - record: instance_mountpoint:node_filesystem_utilization:ratio
+        expr: >
+          1 - (
+            node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|devtmpfs|squashfs"}
+            /
+            node_filesystem_size_bytes{job="node", fstype!~"tmpfs|devtmpfs|squashfs"}
+          )
+
+      # Absolute available bytes — used by the predict_linear alert
+      - record: instance_mountpoint:node_filesystem_avail_bytes:current
+        expr: >
+          node_filesystem_avail_bytes{job="node", fstype!~"tmpfs|devtmpfs|squashfs"}
+
+      # -------------------------------------------------------------------
+      # Disk I/O throughput
+      # -------------------------------------------------------------------
+      - record: instance_device:node_disk_read_bytes_total:rate5m
+        expr: >
+          rate(node_disk_read_bytes_total{job="node"}[5m])
+
+      - record: instance_device:node_disk_written_bytes_total:rate5m
+        expr: >
+          rate(node_disk_written_bytes_total{job="node"}[5m])
+
+      # -------------------------------------------------------------------
+      # Network throughput
+      # -------------------------------------------------------------------
+      - record: instance_device:node_network_receive_bytes_total:rate5m
+        expr: >
+          rate(node_network_receive_bytes_total{job="node", device!~"lo|veth.*|br-.*|docker.*"}[5m])
+
+      - record: instance_device:node_network_transmit_bytes_total:rate5m
+        expr: >
+          rate(node_network_transmit_bytes_total{job="node", device!~"lo|veth.*|br-.*|docker.*"}[5m])
+
+      # -------------------------------------------------------------------
+      # Container CPU utilisation (cAdvisor)
+      #
+      # container_cpu_usage_seconds_total is a counter per container and
+      # per CPU.  Summing across CPUs and dividing by the number of CPUs
+      # gives a 0–1 utilisation ratio.
+      #
+      # We use the `name` label (Docker container name) as the grouping key
+      # and drop the `id` label (a long cgroup path) to keep cardinality low.
+      # -------------------------------------------------------------------
+      - record: container_name:container_cpu_usage_seconds_total:rate5m
+        expr: >
+          sum by(name)(
+            rate(container_cpu_usage_seconds_total{job="cadvisor", name!=""}[5m])
+          )
+
+      # -------------------------------------------------------------------
+      # Container memory usage (cAdvisor)
+      # -------------------------------------------------------------------
+      - record: container_name:container_memory_usage_bytes:avg
+        expr: >
+          avg by(name)(
+            container_memory_usage_bytes{job="cadvisor", name!=""}
+          )

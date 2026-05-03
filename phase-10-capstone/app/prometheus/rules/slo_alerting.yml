@@ -1,0 +1,76 @@
+# SLO burn rate alerting
+#
+# Multi-window, multi-burn-rate alerts as described in the Google SRE Workbook.
+#
+# Why two windows per alert?
+#   A single short window (5m) produces false positives — a brief spike
+#   looks like a sustained incident.  Requiring BOTH the short window (to
+#   catch the spike) AND the long window (to confirm it's not transient)
+#   gives the best signal-to-noise ratio.
+#
+# Burn rate thresholds for a 30-day SLO:
+#   14.4× → will exhaust 30d budget in 2h   (2-hour budget)
+#    6.0× → will exhaust 30d budget in 5d   (5-day budget)
+#    1.0× → consuming at steady state
+#
+# These thresholds assume a 99.5% SLO (0.5% error budget).
+# For a 99.9% SLO (0.1% budget), the thresholds are the same — burn rate
+# is already normalised relative to the budget.
+
+groups:
+  - name: lumio.slo.alerting
+    rules:
+
+      # -----------------------------------------------------------------------
+      # Fast burn — critical page
+      #
+      # Fires when both the 5-minute and 1-hour burn rates exceed 14.4×.
+      # At this rate the entire 30-day error budget will be exhausted within
+      # 2 hours.  This needs immediate on-call response.
+      #
+      # for: 2m avoids flapping on a brief transient spike.
+      # -----------------------------------------------------------------------
+      - alert: SLOFastBurn
+        expr: |
+          job:lumio_slo_burn_rate:rate5m{job="lumio-api"} > 14.4
+          and
+          job:lumio_slo_burn_rate:rate1h{job="lumio-api"} > 14.4
+        for: 2m
+        labels:
+          severity: critical
+          slo:      availability
+        annotations:
+          summary: "SLO fast burn — budget exhausted in < 2h at current rate"
+          description: >
+            Availability SLO burn rate is
+            5m={{ printf "%.1f" (query "job:lumio_slo_burn_rate:rate5m{job='lumio-api'}" | first | value) }}×,
+            1h={{ printf "%.1f" (query "job:lumio_slo_burn_rate:rate1h{job='lumio-api'}" | first | value) }}×.
+            SLO target is 99.5%.  At this rate the 30-day error budget
+            (216 minutes) will be exhausted within 2 hours.
+
+      # -----------------------------------------------------------------------
+      # Slow burn — warning ticket
+      #
+      # Fires when both the 30-minute and 6-hour burn rates exceed 6×.
+      # At this rate the 30-day budget will be exhausted in 5 days.
+      # This does not require an immediate page but should be investigated
+      # during business hours.
+      #
+      # for: 15m prevents alerting on brief spikes that recover quickly.
+      # -----------------------------------------------------------------------
+      - alert: SLOSlowBurn
+        expr: |
+          job:lumio_slo_burn_rate:rate30m{job="lumio-api"} > 6
+          and
+          job:lumio_slo_burn_rate:rate6h{job="lumio-api"} > 6
+        for: 15m
+        labels:
+          severity: warning
+          slo:      availability
+        annotations:
+          summary: "SLO slow burn — budget exhausted in < 5d at current rate"
+          description: >
+            Availability SLO burn rate is
+            30m={{ $value | humanize }}×, 6h window also elevated.
+            At this rate the 30-day error budget will be exhausted within 5 days.
+            Investigate the root cause before it escalates to a fast burn.

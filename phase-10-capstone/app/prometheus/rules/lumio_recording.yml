@@ -1,0 +1,48 @@
+# Application recording rules
+# env is sourced from external_labels in prometheus.yml — automatically
+# present on every metric from this Prometheus instance.
+
+groups:
+  - name: lumio.api.recording
+    rules:
+      - record: job:lumio_http_requests_total:rate5m
+        expr: sum(rate(lumio_http_requests_total[5m])) by (job)
+
+      - record: job_endpoint:lumio_http_requests_total:rate5m
+        expr: sum(rate(lumio_http_requests_total[5m])) by (job, endpoint)
+
+      - record: job:lumio_http_requests_error_ratio:rate5m
+        expr: |
+          sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m])) by (job)
+          /
+          sum(rate(lumio_http_requests_total[5m])) by (job)
+
+      - record: job:lumio_http_request_duration_seconds:p50rate5m
+        expr: >
+          histogram_quantile(0.50,
+            sum by(le, job)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: job:lumio_http_request_duration_seconds:p95rate5m
+        expr: >
+          histogram_quantile(0.95,
+            sum by(le, job)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: job:lumio_http_request_duration_seconds:p99rate5m
+        expr: >
+          histogram_quantile(0.99,
+            sum by(le, job)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: job_endpoint:lumio_http_request_duration_seconds:p95rate5m
+        expr: >
+          histogram_quantile(0.95,
+            sum by(le, job, endpoint)(rate(lumio_http_request_duration_seconds_bucket[5m]))
+          )
+
+      - record: job_event_type:lumio_events_processed_total:rate5m
+        expr: sum(rate(lumio_events_processed_total[5m])) by (job, event_type)
+
+      - record: job:lumio_events_errors_total:rate5m
+        expr: sum(rate(lumio_events_errors_total[5m])) by (job)

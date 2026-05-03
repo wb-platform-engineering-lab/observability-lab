@@ -1,0 +1,178 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "Lumio production platform — all three signals in one view. Use the Explore links to drill into logs and traces from any panel.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    { "title": "SLO Dashboard →", "url": "/d/lumio-slo", "type": "link", "targetBlank": false },
+    { "title": "Explore Logs →", "url": "/explore?left=%7B%22datasource%22%3A%22loki%22%7D", "type": "link", "targetBlank": true },
+    { "title": "Explore Traces →", "url": "/explore?left=%7B%22datasource%22%3A%22tempo%22%7D", "type": "link", "targetBlank": true }
+  ],
+  "panels": [
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100, "title": "Golden Signals", "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 1 }, { "color": "red", "value": 5 }] }, "unit": "reqps", "mappings": [] } },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 }, "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background" },
+      "title": "Request Rate", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_requests_total:rate5m{job=\"lumio-api\"}", "legendFormat": "rps", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.01 }, { "color": "red", "value": 0.05 }] }, "unit": "percentunit", "mappings": [] } },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 }, "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background" },
+      "title": "Error Rate", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_requests_error_ratio:rate5m{job=\"lumio-api\"}", "legendFormat": "errors", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.3 }, { "color": "red", "value": 0.5 }] }, "unit": "s", "mappings": [] } },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 }, "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background" },
+      "title": "P95 Latency", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p95rate5m{job=\"lumio-api\"}", "legendFormat": "p95", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "red", "value": null }, { "color": "yellow", "value": 0.9 }, { "color": "green", "value": 0.995 }] }, "unit": "percentunit", "min": 0.98, "max": 1, "mappings": [] } },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 }, "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background" },
+      "title": "Availability SLI (1h)", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_availability:rate1h{job=\"lumio-api\"}", "legendFormat": "availability", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 6 }, { "color": "red", "value": 14.4 }] }, "unit": "short", "mappings": [] } },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 }, "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background" },
+      "title": "SLO Burn Rate (1h)", "description": "1× = steady state. 14.4× = budget exhausted in 2h.", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_burn_rate:rate1h{job=\"lumio-api\"}", "legendFormat": "burn rate", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }, { "color": "yellow", "value": 0.7 }, { "color": "red", "value": 0.9 }] }, "unit": "percentunit", "mappings": [] } },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 }, "id": 6,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background" },
+      "title": "CPU Utilisation", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "instance:node_cpu_utilization:ratio5m", "legendFormat": "cpu", "refId": "A" }]
+    },
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101, "title": "Traffic & Errors", "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "reqps" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 6 }, "id": 7,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Request Rate by Endpoint", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job_endpoint:lumio_http_requests_total:rate5m{job=\"lumio-api\"}", "legendFormat": "{{endpoint}}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "percentunit" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 6 }, "id": 8,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Error Rate", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_requests_error_ratio:rate5m{job=\"lumio-api\"}", "legendFormat": "error rate", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "s" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 6 }, "id": 9,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Latency Percentiles", "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p50rate5m{job=\"lumio-api\"}", "legendFormat": "P50", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p95rate5m{job=\"lumio-api\"}", "legendFormat": "P95", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_http_request_duration_seconds:p99rate5m{job=\"lumio-api\"}", "legendFormat": "P99", "refId": "C" }
+      ]
+    },
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 14 },
+      "id": 102, "title": "Logs (Loki)", "type": "row"
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 1 }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 6, "w": 12, "x": 0, "y": 15 }, "id": 10,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Log Volume by Level", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "sum by(level) (rate({service=\"api\"}[2m]))", "legendFormat": "{{level}}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "loki", "uid": "loki" },
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 15 }, "id": 11,
+      "options": { "dedupStrategy": "none", "enableLogDetails": true, "showTime": true, "sortOrder": "Descending", "wrapLogMessage": false },
+      "title": "Error Logs (live)", "type": "logs",
+      "targets": [{ "datasource": { "type": "loki", "uid": "loki" }, "expr": "{service=\"api\", level=\"WARNING\"}", "refId": "A" }]
+    },
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 21 },
+      "id": 103, "title": "Infrastructure", "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 22 }, "id": 12,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Host CPU", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "instance:node_cpu_utilization:ratio5m", "legendFormat": "cpu", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 22 }, "id": 13,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Host Memory", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "instance:node_memory_utilization:ratio", "legendFormat": "memory", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "percentunit", "min": 0, "max": 1 }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 22 }, "id": 14,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Disk Utilisation (/)", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "instance_mountpoint:node_filesystem_utilization:ratio{mountpoint=\"/\"}", "legendFormat": "disk /", "refId": "A" }]
+    },
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 30 },
+      "id": 104, "title": "Container Resources (cAdvisor)", "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "short" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 31 }, "id": 15,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Container CPU Usage", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "container_name:container_cpu_usage_seconds_total:rate5m", "legendFormat": "{{name}}", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineWidth": 2, "fillOpacity": 10 }, "unit": "bytes" }, "overrides": [] },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 31 }, "id": 16,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "Container Memory Usage", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "container_name:container_memory_usage_bytes:avg", "legendFormat": "{{name}}", "refId": "A" }]
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 38,
+  "tags": ["lumio", "platform", "capstone"],
+  "templating": { "list": [] },
+  "time": { "from": "now-30m", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Lumio — Production Platform",
+  "uid": "lumio-platform",
+  "version": 1
+}

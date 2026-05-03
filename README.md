@@ -59,7 +59,7 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 | 7 | Infrastructure Metrics & Exporters | Advanced | 3–4 hrs | ✅ Complete |
 | 8 | Cardinality & Production Pitfalls | Advanced | 2–3 hrs | ✅ Complete |
 | 9 | Multi-environment Observability | Advanced | 3–4 hrs | ✅ Complete |
-| 10 | Capstone — Production Platform | Expert | 4–6 hrs | 🔜 Coming soon |
+| 10 | Capstone — Production Platform | Expert | 4–6 hrs | ✅ Complete |
 | 11 | Enterprise APM with Dynatrace | Expert | 3–4 hrs | ✅ Complete |
 
 ---
@@ -193,7 +193,28 @@ Each phase is motivated by a real observability problem that emerged as Lumio sc
 │       ├── alertmanager/alertmanager.yml ← routes by env; inhibition with equal: [job, env]
 │       └── grafana/dashboards/
 │           └── lumio-multienv.json    ← env template variable; dev vs prod side-by-side
-...
+├── phase-10-capstone/
+│   ├── README.md
+│   └── app/
+│       ├── docker-compose.yml         ← 11 services: full three-signal production stack
+│       ├── load.sh                    ← realistic weighted traffic across 4 endpoints
+│       ├── break.sh                   ← fast (50%) / slow (10%) error injection
+│       ├── api/                       ← prometheus_client metrics + OTel traces + JSON logs
+│       ├── otelcol/config.yml         ← traces-only pipeline → Tempo
+│       ├── promtail/promtail.yml      ← JSON logs → Loki with env label promotion
+│       ├── prometheus/
+│       │   ├── prometheus.yml         ← external_labels: {env: prod}
+│       │   └── rules/
+│       │       ├── lumio_recording.yml ← golden signal recording rules
+│       │       ├── lumio_alerting.yml  ← app alerts (service down, error rate, latency)
+│       │       ├── slo_recording.yml   ← SLI + burn rate at 4 windows + error budget
+│       │       ├── slo_alerting.yml    ← SLOFastBurn (5m+1h > 14.4×) + SLOSlowBurn (30m+6h > 6×)
+│       │       ├── infra_recording.yml ← node + cAdvisor aggregates
+│       │       └── infra_alerting.yml  ← disk/memory/CPU alerts with predict_linear
+│       ├── alertmanager/alertmanager.yml ← SLO-aware routing + inhibit on LumioServiceDown
+│       └── grafana/dashboards/
+│           ├── lumio-platform.json    ← unified: golden signals + logs + infra + containers
+│           └── lumio-slo.json         ← SLO deep-dive: burn rate all windows + error budget
 └── phase-11-dynatrace/
     ├── README.md
     └── app/

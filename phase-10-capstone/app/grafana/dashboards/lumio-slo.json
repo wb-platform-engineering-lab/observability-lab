@@ -1,0 +1,308 @@
+{
+  "__inputs": [],
+  "__requires": [],
+  "annotations": { "list": [] },
+  "description": "Lumio SLO deep-dive — error budget, burn rate, and SLI trends. Use this dashboard during incidents to assess budget impact and recovery rate.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "id": null,
+  "links": [
+    { "title": "← Platform Overview", "url": "/d/lumio-platform", "type": "link", "targetBlank": false },
+    { "title": "Explore Logs →", "url": "/explore?left=%7B%22datasource%22%3A%22loki%22%7D", "type": "link", "targetBlank": true }
+  ],
+  "panels": [
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "id": 100, "title": "SLO Status", "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red",    "value": null },
+            { "color": "yellow", "value": 0.99 },
+            { "color": "green",  "value": 0.995 }
+          ]},
+          "unit": "percentunit", "min": 0.98, "max": 1,
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 0, "y": 1 }, "id": 1,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background", "orientation": "auto" },
+      "title": "Availability SLI (5m)", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_availability:rate5m{job=\"lumio-api\"}", "legendFormat": "5m SLI", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red",    "value": null },
+            { "color": "yellow", "value": 0.99 },
+            { "color": "green",  "value": 0.995 }
+          ]},
+          "unit": "percentunit", "min": 0.98, "max": 1,
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 4, "y": 1 }, "id": 2,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background", "orientation": "auto" },
+      "title": "Availability SLI (1h)", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_availability:rate1h{job=\"lumio-api\"}", "legendFormat": "1h SLI", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red",    "value": null },
+            { "color": "yellow", "value": 0.99 },
+            { "color": "green",  "value": 0.995 }
+          ]},
+          "unit": "percentunit", "min": 0.98, "max": 1,
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 8, "y": 1 }, "id": 3,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background", "orientation": "auto" },
+      "title": "Availability SLI (6h)", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_availability:rate6h{job=\"lumio-api\"}", "legendFormat": "6h SLI", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green",  "value": null },
+            { "color": "yellow", "value": 6 },
+            { "color": "red",    "value": 14.4 }
+          ]},
+          "unit": "short",
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 12, "y": 1 }, "id": 4,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background", "orientation": "auto" },
+      "title": "Burn Rate (1h)", "description": "1× = steady state. 6× = slow burn (5d). 14.4× = fast burn (2h).", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_burn_rate:rate1h{job=\"lumio-api\"}", "legendFormat": "1h burn", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green",  "value": null },
+            { "color": "yellow", "value": 6 },
+            { "color": "red",    "value": 14.4 }
+          ]},
+          "unit": "short",
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 16, "y": 1 }, "id": 5,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background", "orientation": "auto" },
+      "title": "Burn Rate (6h)", "description": "Slow-window confirmation. If both 1h and 6h are elevated, file an incident.", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_burn_rate:rate6h{job=\"lumio-api\"}", "legendFormat": "6h burn", "refId": "A" }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "red",    "value": null },
+            { "color": "yellow", "value": 0.25 },
+            { "color": "green",  "value": 0.5 }
+          ]},
+          "unit": "percentunit", "min": 0, "max": 1,
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 4, "x": 20, "y": 1 }, "id": 6,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background", "orientation": "auto" },
+      "title": "Error Budget Remaining (6h approx)", "description": "Approximation based on 6h window. Full accuracy requires 30d retention.", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_error_budget_remaining:approx6h{job=\"lumio-api\"}", "legendFormat": "budget", "refId": "A" }]
+    },
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 5 },
+      "id": 101, "title": "Burn Rate Over Time", "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 5 },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "fast burn threshold (14.4×)" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+              { "id": "custom.lineWidth", "value": 1 },
+              { "id": "custom.lineStyle", "value": { "dash": [4, 4], "fill": "dash" } },
+              { "id": "custom.fillOpacity", "value": 0 }
+            ]
+          },
+          {
+            "matcher": { "id": "byName", "options": "slow burn threshold (6×)" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "orange" } },
+              { "id": "custom.lineWidth", "value": 1 },
+              { "id": "custom.lineStyle", "value": { "dash": [4, 4], "fill": "dash" } },
+              { "id": "custom.fillOpacity", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 6 }, "id": 7,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "title": "Burn Rate — All Windows", "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_burn_rate:rate5m{job=\"lumio-api\"}", "legendFormat": "5m", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_burn_rate:rate30m{job=\"lumio-api\"}", "legendFormat": "30m", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_burn_rate:rate1h{job=\"lumio-api\"}", "legendFormat": "1h", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_burn_rate:rate6h{job=\"lumio-api\"}", "legendFormat": "6h", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "vector(14.4)", "legendFormat": "fast burn threshold (14.4×)", "refId": "E" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "vector(6)", "legendFormat": "slow burn threshold (6×)", "refId": "F" }
+      ]
+    },
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "id": 102, "title": "Availability SLI vs Target", "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 5 },
+          "unit": "percentunit", "min": 0.97, "max": 1
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byName", "options": "SLO target (99.5%)" },
+            "properties": [
+              { "id": "color", "value": { "mode": "fixed", "fixedColor": "red" } },
+              { "id": "custom.lineWidth", "value": 1 },
+              { "id": "custom.lineStyle", "value": { "dash": [4, 4], "fill": "dash" } },
+              { "id": "custom.fillOpacity", "value": 0 }
+            ]
+          }
+        ]
+      },
+      "gridPos": { "h": 10, "w": 16, "x": 0, "y": 17 }, "id": 8,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "title": "Availability SLI — All Windows vs 99.5% Target", "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_availability:rate5m{job=\"lumio-api\"}", "legendFormat": "5m SLI", "refId": "A" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_availability:rate30m{job=\"lumio-api\"}", "legendFormat": "30m SLI", "refId": "B" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_availability:rate1h{job=\"lumio-api\"}", "legendFormat": "1h SLI", "refId": "C" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_availability:rate6h{job=\"lumio-api\"}", "legendFormat": "6h SLI", "refId": "D" },
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "vector(0.995)", "legendFormat": "SLO target (99.5%)", "refId": "E" }
+      ]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2, "fillOpacity": 10 },
+          "unit": "percentunit", "min": 0, "max": 1
+        }
+      },
+      "gridPos": { "h": 10, "w": 8, "x": 16, "y": 17 }, "id": 9,
+      "options": {
+        "tooltip": { "mode": "multi" },
+        "legend": { "displayMode": "list", "placement": "bottom" }
+      },
+      "title": "Error Budget Remaining (6h approx)", "type": "timeseries",
+      "targets": [
+        { "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "job:lumio_slo_error_budget_remaining:approx6h{job=\"lumio-api\"}", "legendFormat": "budget remaining", "refId": "A" }
+      ]
+    },
+    {
+      "collapsed": false, "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "id": 103, "title": "Alert State", "type": "row"
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red",   "value": 1 }
+          ]},
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "red" } } }
+          ]
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 0, "y": 28 }, "id": 10,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background", "orientation": "auto" },
+      "title": "SLOFastBurn Alert", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "ALERTS{alertname=\"SLOFastBurn\", job=\"lumio-api\"}", "legendFormat": "fast burn", "refId": "A", "instant": true }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "thresholds" },
+          "thresholds": { "mode": "absolute", "steps": [
+            { "color": "green", "value": null },
+            { "color": "red",   "value": 1 }
+          ]},
+          "unit": "short",
+          "mappings": [
+            { "type": "value", "options": { "0": { "text": "OK", "color": "green" }, "1": { "text": "FIRING", "color": "red" } } }
+          ]
+        }
+      },
+      "gridPos": { "h": 4, "w": 6, "x": 6, "y": 28 }, "id": 11,
+      "options": { "reduceOptions": { "calcs": ["lastNotNull"] }, "textMode": "auto", "colorMode": "background", "orientation": "auto" },
+      "title": "SLOSlowBurn Alert", "type": "stat",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "ALERTS{alertname=\"SLOSlowBurn\", job=\"lumio-api\"}", "legendFormat": "slow burn", "refId": "A", "instant": true }]
+    },
+    {
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "fieldConfig": {
+        "defaults": {
+          "color": { "mode": "palette-classic" },
+          "custom": { "lineWidth": 2 },
+          "unit": "short",
+          "mappings": []
+        }
+      },
+      "gridPos": { "h": 4, "w": 12, "x": 12, "y": 28 }, "id": 12,
+      "options": { "tooltip": { "mode": "multi" }, "legend": { "displayMode": "list", "placement": "bottom" } },
+      "title": "SLO Alert Notifications Sent", "type": "timeseries",
+      "targets": [{ "datasource": { "type": "prometheus", "uid": "prometheus" }, "expr": "increase(alertmanager_notifications_total{receiver=\"production\"}[5m])", "legendFormat": "notifications (5m)", "refId": "A" }]
+    }
+  ],
+  "refresh": "15s",
+  "schemaVersion": 38,
+  "tags": ["lumio", "slo", "capstone"],
+  "templating": { "list": [] },
+  "time": { "from": "now-3h", "to": "now" },
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "Lumio — SLO Detail",
+  "uid": "lumio-slo",
+  "version": 1
+}

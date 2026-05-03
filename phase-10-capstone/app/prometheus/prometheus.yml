@@ -1,0 +1,51 @@
+global:
+  scrape_interval:     15s
+  evaluation_interval: 15s
+  external_labels:
+    env: prod
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ["alertmanager:9093"]
+
+# Load order: recording rules → alerting rules that reference them
+rule_files:
+  - /etc/prometheus/rules/lumio_recording.yml
+  - /etc/prometheus/rules/infra_recording.yml
+  - /etc/prometheus/rules/slo_recording.yml
+  - /etc/prometheus/rules/lumio_alerting.yml
+  - /etc/prometheus/rules/infra_alerting.yml
+  - /etc/prometheus/rules/slo_alerting.yml
+
+scrape_configs:
+  # Application metrics — scraped directly from the API
+  - job_name: lumio-api
+    static_configs:
+      - targets: ["api:8000"]
+
+  # Host OS metrics
+  - job_name: node
+    static_configs:
+      - targets: ["host.docker.internal:9100"]
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: instance
+        replacement: "lumio-host"
+
+  # Per-container resource metrics
+  - job_name: cadvisor
+    static_configs:
+      - targets: ["cadvisor:8080"]
+    metric_relabel_configs:
+      - source_labels: [__name__]
+        regex: "container_(cpu_usage_seconds_total|memory_usage_bytes|fs_usage_bytes|network_receive_bytes_total|network_transmit_bytes_total)"
+        action: keep
+      - source_labels: [container]
+        regex: ""
+        action: drop
+
+  # Prometheus self-monitoring
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

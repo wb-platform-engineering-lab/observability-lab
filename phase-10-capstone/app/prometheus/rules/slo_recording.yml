@@ -1,0 +1,105 @@
+# SLO recording rules for Lumio API
+#
+# SLO definition: 99.5% of requests succeed over a 30-day rolling window.
+#
+# Error budget:
+#   (1 - 0.995) × 30 days = 0.5% × 30d = 216 minutes of allowed downtime
+#
+# Burn rate:
+#   burn_rate = actual_error_rate / slo_error_budget_rate
+#             = (1 - SLI) / (1 - SLO_target)
+#             = (1 - SLI) / 0.005
+#
+#   burn_rate = 1   → consuming budget at steady state; will exhaust in 30 days
+#   burn_rate = 6   → will exhaust in 5 days   (slow burn — warning)
+#   burn_rate = 14.4 → will exhaust in 2 hours  (fast burn — critical page)
+#
+# Multi-window approach (Google SRE Workbook ch. 5):
+#   Require BOTH a short window AND a long window to exceed the threshold.
+#   The short window catches a spike in progress.
+#   The long window confirms it's not a transient blip.
+#   This reduces false positives while keeping sensitivity to real incidents.
+#
+#   Alert tiers:
+#     Critical (page):  5m + 1h   both > 14.4×
+#     Warning (ticket): 30m + 6h  both > 6×
+
+groups:
+  - name: lumio.slo.recording
+    rules:
+
+      # -------------------------------------------------------------------
+      # Availability SLI — fraction of successful requests
+      # Computed at four time windows for the two alert tiers.
+      # -------------------------------------------------------------------
+      - record: job:lumio_slo_availability:rate5m
+        expr: |
+          1 - (
+            sum(rate(lumio_http_requests_total{status_code=~"5.."}[5m])) by (job)
+            /
+            sum(rate(lumio_http_requests_total[5m])) by (job)
+          )
+
+      - record: job:lumio_slo_availability:rate30m
+        expr: |
+          1 - (
+            sum(rate(lumio_http_requests_total{status_code=~"5.."}[30m])) by (job)
+            /
+            sum(rate(lumio_http_requests_total[30m])) by (job)
+          )
+
+      - record: job:lumio_slo_availability:rate1h
+        expr: |
+          1 - (
+            sum(rate(lumio_http_requests_total{status_code=~"5.."}[1h])) by (job)
+            /
+            sum(rate(lumio_http_requests_total[1h])) by (job)
+          )
+
+      - record: job:lumio_slo_availability:rate6h
+        expr: |
+          1 - (
+            sum(rate(lumio_http_requests_total{status_code=~"5.."}[6h])) by (job)
+            /
+            sum(rate(lumio_http_requests_total[6h])) by (job)
+          )
+
+      # -------------------------------------------------------------------
+      # Burn rate = (1 - SLI) / (1 - 0.995)
+      #           = error_rate / 0.005
+      #
+      # A value > 1 means the error budget is being consumed faster than it
+      # accrues.  A value > 14.4 means it will all be gone within 2 hours.
+      # -------------------------------------------------------------------
+      - record: job:lumio_slo_burn_rate:rate5m
+        expr: (1 - job:lumio_slo_availability:rate5m) / 0.005
+
+      - record: job:lumio_slo_burn_rate:rate30m
+        expr: (1 - job:lumio_slo_availability:rate30m) / 0.005
+
+      - record: job:lumio_slo_burn_rate:rate1h
+        expr: (1 - job:lumio_slo_availability:rate1h) / 0.005
+
+      - record: job:lumio_slo_burn_rate:rate6h
+        expr: (1 - job:lumio_slo_availability:rate6h) / 0.005
+
+      # -------------------------------------------------------------------
+      # Error budget consumed (rolling approximation)
+      #
+      # True 30-day error budget tracking requires storing 30 days of data
+      # and computing the ratio over that full window — Prometheus handles
+      # this well if storage.tsdb.retention.time >= 30d.
+      #
+      # This recording rule gives a 6h-window approximation suitable for
+      # dashboards when full 30d data is not yet available.
+      # -------------------------------------------------------------------
+      - record: job:lumio_slo_error_budget_remaining:approx6h
+        expr: |
+          clamp_min(
+            1 - (
+              (1 - job:lumio_slo_availability:rate6h)
+              /
+              (1 - 0.995)
+            ) / (30 * 24 / 6),
+            0
+          )

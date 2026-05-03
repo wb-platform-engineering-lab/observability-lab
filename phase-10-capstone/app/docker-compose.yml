@@ -1,0 +1,154 @@
+services:
+  # ---------------------------------------------------------------------------
+  # Application — three-signal instrumentation
+  #   Metrics → /metrics → Prometheus
+  #   Traces  → otelcol:4317 → Tempo
+  #   Logs    → stdout → promtail → Loki
+  # ---------------------------------------------------------------------------
+  api:
+    build: ./api
+    ports:
+      - "8000:8000"
+    environment:
+      - OTEL_ENDPOINT=otelcol:4317
+      - ENVIRONMENT=production
+      - ERROR_RATE=0.02
+    labels:
+      logging: "promtail"
+    depends_on:
+      - otelcol
+
+  # ---------------------------------------------------------------------------
+  # Traces pipeline: app → Collector → Tempo
+  # ---------------------------------------------------------------------------
+  otelcol:
+    image: otel/opentelemetry-collector-contrib:0.105.0
+    ports:
+      - "4317:4317"
+      - "4318:4318"
+    volumes:
+      - ./otelcol/config.yml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      - tempo
+
+  tempo:
+    image: grafana/tempo:2.5.0
+    ports:
+      - "3200:3200"
+    volumes:
+      - ./tempo/tempo.yml:/etc/tempo.yml:ro
+      - tempo_data:/var/tempo
+    command: -config.file=/etc/tempo.yml
+
+  # ---------------------------------------------------------------------------
+  # Logs pipeline: stdout → promtail → Loki
+  # ---------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.2.0
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./loki/loki.yml:/etc/loki/loki.yml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/loki.yml
+
+  promtail:
+    image: grafana/promtail:3.2.0
+    volumes:
+      - ./promtail/promtail.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      - loki
+
+  # ---------------------------------------------------------------------------
+  # Metrics pipeline: /metrics scrape + infrastructure exporters
+  # ---------------------------------------------------------------------------
+  node-exporter:
+    image: prom/node-exporter:v1.8.2
+    ports:
+      - "9100:9100"
+    volumes:
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      - /:/rootfs:ro
+    command:
+      - --path.procfs=/host/proc
+      - --path.sysfs=/host/sys
+      - --path.rootfs=/rootfs
+      - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc)($$|/)
+    pid: host
+    network_mode: host
+    restart: unless-stopped
+
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:v0.49.1
+    ports:
+      - "8080:8080"
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:ro
+      - /sys:/sys:ro
+      - /var/lib/docker:/var/lib/docker:ro
+    privileged: true
+    restart: unless-stopped
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./prometheus/rules:/etc/prometheus/rules:ro
+      - prometheus_data:/prometheus
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.retention.time=15d
+      - --web.enable-lifecycle
+    depends_on:
+      - api
+
+  alertmanager:
+    image: prom/alertmanager:v0.27.0
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+      - alertmanager_data:/alertmanager
+    command:
+      - --config.file=/etc/alertmanager/alertmanager.yml
+      - --storage.path=/alertmanager
+
+  webhook:
+    build: ./webhook
+    ports:
+      - "5001:5001"
+    environment:
+      - RECEIVER_NAME=production
+
+  # ---------------------------------------------------------------------------
+  # Grafana — unified three-signal dashboards
+  # ---------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:11.5.2
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=lumio
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_FEATURE_TOGGLES_ENABLE=traceqlEditor
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - tempo
+      - loki
+
+volumes:
+  prometheus_data:
+  alertmanager_data:
+  tempo_data:
+  loki_data:
+  grafana_data:

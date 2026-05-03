@@ -1,0 +1,168 @@
+# Alerting rules for host and container infrastructure
+#
+# All expressions reference pre-computed recording rules from infra_recording.yml
+# (loaded before this file via rule_files ordering in prometheus.yml).
+#
+# Design principles applied here:
+#
+#   1. Alert on symptoms, not causes.  "Disk will fill in 4 hours" is a symptom
+#      that requires action.  "Disk write rate is elevated" is a cause — it may
+#      resolve itself and rarely needs a page.
+#
+#   2. Use predict_linear for capacity alerts.  Threshold alerts on absolute
+#      values fire too late (disk is already at 95%) or too early (disk spiked
+#      briefly then recovered).  predict_linear extrapolates the trend and
+#      alerts when the trajectory will breach a threshold, giving you lead time.
+#
+#   3. Separate warning and critical thresholds.  Warning wakes a human to
+#      investigate.  Critical means the service is degraded or will be soon.
+#
+#   4. Inhibit infrastructure alerts when the service is known down.  If the
+#      API is unreachable it's likely the whole host is gone — firing DiskLow,
+#      MemoryPressure, and HighCPU simultaneously adds noise without value.
+#      See alertmanager.yml for the inhibition rules.
+
+groups:
+  - name: lumio.infra.alerting
+    rules:
+
+      # -------------------------------------------------------------------
+      # Node availability
+      # -------------------------------------------------------------------
+      - alert: NodeDown
+        expr: up{job="node"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "node-exporter unreachable on {{ $labels.instance }}"
+          description: >
+            Prometheus cannot scrape node-exporter on {{ $labels.instance }}.
+            Host OS metrics are unavailable — check whether the VM or bare-metal
+            host is reachable.
+
+      # -------------------------------------------------------------------
+      # Disk space — threshold-based
+      #
+      # Fires when the filesystem is already dangerously full.  Pair with the
+      # predictive alert below so you get warning before it reaches this point.
+      # -------------------------------------------------------------------
+      - alert: NodeDiskSpaceLow
+        expr: >
+          instance_mountpoint:node_filesystem_utilization:ratio{mountpoint="/"} > 0.85
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk space above 85% on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+          description: >
+            {{ $labels.instance }} filesystem {{ $labels.mountpoint }} is
+            {{ $value | humanizePercentage }} full.
+            Free space: {{ printf "instance_mountpoint:node_filesystem_avail_bytes:current{instance='%s',mountpoint='%s'}" $labels.instance $labels.mountpoint | query | first | value | humanize1024 }}B
+
+      - alert: NodeDiskSpaceCritical
+        expr: >
+          instance_mountpoint:node_filesystem_utilization:ratio{mountpoint="/"} > 0.95
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Disk space above 95% on {{ $labels.instance }}:{{ $labels.mountpoint }}"
+          description: >
+            {{ $labels.instance }} filesystem {{ $labels.mountpoint }} is
+            {{ $value | humanizePercentage }} full.  Imminent risk of write failures —
+            Prometheus WAL, application logs, and container layers will be affected.
+
+      # -------------------------------------------------------------------
+      # Disk space — predictive (predict_linear)
+      #
+      # predict_linear(v, t) extrapolates the linear trend in v over the
+      # last hour and returns the predicted value t seconds in the future.
+      #
+      # This fires when the TREND suggests the filesystem will run out of
+      # space within 4 hours — giving you time to act before it actually fills.
+      #
+      # Why 1h lookback?  Shorter windows produce noisy predictions (a burst
+      # write looks like a permanent trend).  Longer windows miss recent shifts.
+      # 1h is a reasonable default; tune for your write patterns.
+      # -------------------------------------------------------------------
+      - alert: NodeDiskFilling
+        expr: >
+          predict_linear(
+            instance_mountpoint:node_filesystem_avail_bytes:current{mountpoint="/"}[1h],
+            4 * 3600
+          ) < 0
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Disk filling — {{ $labels.instance }}:{{ $labels.mountpoint }} will be full in < 4h"
+          description: >
+            Based on the write rate over the last hour, {{ $labels.instance }}
+            filesystem {{ $labels.mountpoint }} is predicted to run out of space
+            within 4 hours.  Current utilisation:
+            {{ printf "instance_mountpoint:node_filesystem_utilization:ratio{instance='%s',mountpoint='/'}" $labels.instance | query | first | value | humanizePercentage }}.
+
+      # -------------------------------------------------------------------
+      # Memory pressure
+      #
+      # Fires when less than 10% of memory is available.  Uses the kernel's
+      # MemAvailable estimate (which accounts for reclaimable page cache) rather
+      # than a raw MemFree threshold.
+      # -------------------------------------------------------------------
+      - alert: NodeMemoryPressure
+        expr: >
+          instance:node_memory_utilization:ratio > 0.90
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Memory above 90% on {{ $labels.instance }}"
+          description: >
+            {{ $labels.instance }} memory utilisation is {{ $value | humanizePercentage }}.
+            Available: {{ printf "node_memory_MemAvailable_bytes{instance='%s'}" $labels.instance | query | first | value | humanize1024 }}B.
+            Risk of OOM kills — check container memory limits and application heap usage.
+
+      - alert: NodeMemoryCritical
+        expr: >
+          instance:node_memory_utilization:ratio > 0.97
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Memory above 97% on {{ $labels.instance }} — OOM kill risk"
+          description: >
+            {{ $labels.instance }} memory utilisation is {{ $value | humanizePercentage }}.
+            The OOM killer may terminate processes.
+
+      # -------------------------------------------------------------------
+      # CPU saturation
+      #
+      # Sustained high CPU is a problem; brief spikes are normal.  Use a
+      # long for: window (10m) to avoid alert fatigue from transient spikes.
+      # -------------------------------------------------------------------
+      - alert: NodeHighCPU
+        expr: >
+          instance:node_cpu_utilization:ratio5m > 0.90
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "CPU above 90% on {{ $labels.instance }} for 10m"
+          description: >
+            {{ $labels.instance }} CPU utilisation has been above 90% for 10 minutes
+            (current: {{ $value | humanizePercentage }}).
+            Check for runaway processes or unexpected load spikes.
+
+      # -------------------------------------------------------------------
+      # Dead man's switch (Watchdog) — carried from Phase 2
+      # -------------------------------------------------------------------
+      - alert: LumioWatchdog
+        expr: vector(1)
+        labels:
+          severity: none
+        annotations:
+          summary: "Alerting pipeline is alive"
+          description: >
+            This alert always fires.  If it stops appearing in the webhook
+            receiver the alerting pipeline has broken.
