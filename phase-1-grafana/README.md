@@ -227,7 +227,7 @@ This uses the `endpoint` label value as the series name. Without this, Grafana u
 ### Step 4: Configure the panel
 
 - Set the **Panel title** (top-right of the panel editor): `Requests per second`
-- In **Field** → **Unit**, search for `requests/sec` (or type `reqps`)
+- In the right sidebar, expand **Standard options** → **Unit**, search for `requests/sec` (or type `reqps`). You can also use the search icon at the top of the sidebar and type `unit` to jump directly to it.
 - In **Graph styles** → **Fill opacity**, set to `10`
 - In **Graph styles** → **Stacking**, set to `Normal`
 
@@ -257,18 +257,17 @@ In the top-right panel type selector, choose **Stat**.
 
 ### Step 4: Configure units and thresholds
 
-Under **Field**:
+Under **Standard options**:
 - **Unit:** `Percent (0-100)`
 - **Decimals:** `2`
+- **Color scheme:** `Thresholds`
 
 Under **Thresholds** (click **+ Add threshold**):
 - Default (no threshold): green
 - Value `1`: yellow
 - Value `5`: red
 
-Under **Standard options** → **Color scheme**: choose `Thresholds`.
-
-Under **Stat styles** → **Color mode**: choose `Background` — the entire panel background changes colour.
+Under **Stat options** → **Color mode**: choose `Background` — the entire panel background changes colour.
 
 Click **Apply**. The panel shows the current error rate as a number with a coloured background: green when healthy, yellow when degraded, red when on fire.
 
@@ -297,11 +296,11 @@ histogram_quantile(0.99, sum by(le)(rate(lumio_http_request_duration_seconds_buc
 
 ### Step 2: Configure units
 
-Under **Field** → **Unit**, select `seconds (s)`.
+Under **Standard options** → **Unit**, select `seconds (s)`.
 
 ### Step 3: Set explicit colours for the three series
 
-Under **Overrides**, add an override for each series name:
+In the **Overrides** tab (next to the **All** tab at the top of the right sidebar), click **+ Add field override** → **Fields with name**, and add an override for each series:
 
 | Series | Colour |
 |---|---|
@@ -321,7 +320,7 @@ Template variables turn one static dashboard into a dynamic one. Instead of one 
 
 ### Step 1: Open dashboard settings
 
-In the dashboard you created, click the **gear icon** (⚙) at the top right → **Variables** → **Add variable**.
+In the dashboard you created, click the **gear icon** (⚙) at the top right → **Dashboard settings** → **Variables** → **+ New variable**.
 
 ### Step 2: Configure the variable
 
@@ -357,7 +356,7 @@ Understanding the dashboard JSON format makes you independent of the UI. You can
 
 ### Step 1: Export a dashboard you built
 
-In any dashboard, click the **Share** icon (or go to Dashboard settings → JSON model).
+In any dashboard, click the **Share** icon → **Export** → **View JSON** (or go to **Dashboard settings** → **JSON model**).
 
 Copy the JSON and compare it to `phase-1-grafana/app/grafana/dashboards/lumio-overview.json`.
 
