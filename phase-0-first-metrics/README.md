@@ -158,21 +158,39 @@ The counter values have increased. Each scrape by Prometheus captures a snapshot
 
 ## Challenge 2 — Understand the metrics in the code
 
+Open the file and read through it:
+
 ```bash
 cat phase-0-first-metrics/app/api/app.py
 ```
 
-### The four metrics
+The file has two distinct sections: **metric definitions** (what to measure) and **instrumentation hooks** (when to record). Read them separately.
+
+---
+
+### Part 1 — The five metrics
+
+#### `lumio_http_requests_total` — Counter
 
 ```python
 REQUEST_COUNT = Counter(
     'lumio_http_requests_total',
     'Total HTTP requests received',
-    ['method', 'endpoint', 'status_code']   # ← labels
+    ['method', 'endpoint', 'status_code']
 )
 ```
 
-The three labels create dimensions. Without labels, you'd have a single number: total requests. With labels, you can answer: *"How many POST requests to /events returned a 503 in the last 5 minutes?"*
+A counter only ever goes up. It counts every HTTP request the API receives, broken down by three labels.
+
+Labels create **dimensions**. Without them, you'd have one number: total requests ever. With three labels you can answer:
+- *"How many POST requests came in?"* → filter `method="POST"`
+- *"How many requests hit `/events`?"* → filter `endpoint="ingest_event"`
+- *"How many returned a 503?"* → filter `status_code="503"`
+- *"What is the error rate on `/events` specifically?"* → combine all three
+
+Each unique combination of label values is stored as a **separate time series**. With 2 methods × 3 endpoints × ~5 status codes, this metric produces ~30 time series.
+
+#### `lumio_http_request_duration_seconds` — Histogram
 
 ```python
 REQUEST_LATENCY = Histogram(
@@ -183,13 +201,26 @@ REQUEST_LATENCY = Histogram(
 )
 ```
 
-The `buckets` define the histogram's resolution. Each bucket `b` counts all observations where `value <= b`. Choosing buckets that match your SLOs is important — covered in the production considerations section.
+A histogram records every observed latency value into one of several pre-defined buckets. Each bucket `b` counts all observations where `value <= b` — so they are cumulative. With these 10 buckets, Prometheus stores 12 time series per label combination: one per bucket (`_bucket{le="..."}`), one for the total count (`_count`), and one for the sum of all observed values (`_sum`).
+
+The bucket boundaries matter. If your SLO is "95% of requests complete within 200ms" you need a bucket at `0.2`. Without it, `histogram_quantile` can only interpolate between `0.1` and `0.25`, introducing inaccuracy. **Define buckets before collecting data — they cannot be changed retroactively without losing history.**
+
+The `status_code` label is intentionally absent from this metric. Latency per status code would multiply cardinality without adding useful information — you generally don't need P95 latency of your 404s.
+
+#### `lumio_active_requests` — Gauge
 
 ```python
-ACTIVE_REQUESTS = Gauge('lumio_active_requests', 'Number of in-flight HTTP requests')
+ACTIVE_REQUESTS = Gauge(
+    'lumio_active_requests',
+    'Number of in-flight HTTP requests'
+)
 ```
 
-A gauge that increments in `before_request` and decrements in `teardown_request`. It tells you, right now, how many requests are being processed concurrently.
+Unlike a counter, a gauge can go up and down. It represents the current number of requests being processed right now — incremented when a request starts, decremented when it ends.
+
+This is a **concurrency metric**, not a rate metric. You don't use `rate()` on a gauge — you just read its current value. A sustained high value indicates the API is under load or a slow endpoint is accumulating in-flight requests.
+
+#### `lumio_events_processed_total` — Counter (business metric)
 
 ```python
 EVENTS_PROCESSED = Counter(
@@ -199,18 +230,105 @@ EVENTS_PROCESSED = Counter(
 )
 ```
 
-A **business metric** — not just infrastructure. This answers: *"How many `checkout` events did we process in the last hour?"* Business metrics are often more important than technical ones during an incident.
+This is a **business metric** — it measures what the service does, not just how the HTTP layer behaves. It answers: *"How many `checkout` events did we process in the last hour?"*
 
-### Why `/metrics` is excluded from instrumentation
+During the 2am incident, `lumio_http_requests_total` would tell you requests were failing. `lumio_events_processed_total` would tell you that checkouts had stopped completely — which is what the customer actually cared about. Business metrics are often more actionable during an incident than infrastructure metrics.
+
+#### `lumio_events_errors_total` — Counter (error classification)
+
+```python
+EVENTS_ERRORS = Counter(
+    'lumio_events_errors_total',
+    'Total event processing errors',
+    ['reason']
+)
+```
+
+A dedicated error counter with a `reason` label. Rather than inferring errors from `status_code="503"` on the HTTP counter, this metric explicitly records what went wrong and why. Here it records `reason="upstream_timeout"` when the simulated upstream fails. In a real service, you'd add reasons like `validation_error`, `database_timeout`, or `rate_limited` — each becoming its own time series that you can alert on independently.
+
+---
+
+### Part 2 — The instrumentation hooks
+
+The metric definitions say *what* to measure. The hooks say *when* to record.
+
+```python
+@app.before_request
+def start_timer():
+    g.start_time = time.time()
+    if request.path != '/metrics':
+        ACTIVE_REQUESTS.inc()
+```
+
+`before_request` runs before every route handler. It records the start time in Flask's per-request context object (`g`) so `after_request` can compute duration, and increments the active requests gauge.
+
+```python
+@app.teardown_request
+def decrement_active(_exc):
+    if request.path != '/metrics':
+        ACTIVE_REQUESTS.dec()
+```
+
+`teardown_request` runs after every request — **even if an exception was raised**. This is important: if you decremented in `after_request`, an unhandled exception would skip the decrement and `lumio_active_requests` would leak upward over time. Using `teardown_request` guarantees the gauge is always decremented.
 
 ```python
 @app.after_request
 def record_metrics(response):
     if request.path != '/metrics':
-        ...
+        duration = time.time() - g.start_time
+        endpoint = request.endpoint or 'unknown'
+        REQUEST_LATENCY.labels(
+            method=request.method,
+            endpoint=endpoint
+        ).observe(duration)
+        REQUEST_COUNT.labels(
+            method=request.method,
+            endpoint=endpoint,
+            status_code=str(response.status_code)
+        ).inc()
+    return response
 ```
 
-If Prometheus scrapes every 15 seconds and we record a request metric for each scrape, we'd be measuring our measuring tool. The `/metrics` endpoint would always be the most-requested endpoint in our data — a meaningless artifact.
+`after_request` runs after the route handler returns a response (but before teardown). It computes duration from the start time stored in `g`, then records two observations: one into the latency histogram (`.observe(duration)`) and one increment on the request counter. The status code is only available here — after the handler has run and produced a response — which is why it is recorded in `after_request` and not `before_request`.
+
+Note that `.labels(...)` returns a labelled version of the metric object — the actual counter or histogram bound to that specific label combination. You must call `.inc()` or `.observe()` on it, not on the base metric.
+
+---
+
+### Part 3 — Why `/metrics` is excluded from instrumentation
+
+Every hook checks `if request.path != '/metrics'` before recording anything. This is intentional.
+
+Prometheus scrapes `/metrics` every 15 seconds. If each scrape incremented `lumio_http_requests_total`, the `/metrics` endpoint would appear as the most-requested endpoint in your data — drowning out the signal from real traffic. It would also create a feedback loop: more scraping → more metrics data → larger `/metrics` response → more bytes to transfer per scrape.
+
+Excluding `/metrics` from instrumentation keeps your data clean. The scraper is infrastructure, not traffic.
+
+---
+
+### Part 4 — Verify your understanding
+
+After reading the code, make a request and check what changed:
+
+```bash
+# Make one successful POST
+curl -s -X POST http://localhost:8000/events \
+  -H "Content-Type: application/json" \
+  -d '{"type":"checkout","customer_id":"cust_42"}' | python3 -m json.tool
+
+# Check what incremented
+curl -s http://localhost:8000/metrics | grep -E "^lumio_(http_requests_total|events_processed)"
+```
+
+You should see:
+- `lumio_http_requests_total{endpoint="ingest_event",method="POST",status_code="201"}` incremented by 1
+- `lumio_events_processed_total{event_type="checkout"}` incremented by 1 (unless the 2% error rate fired)
+
+If you got a 503:
+- `lumio_http_requests_total{...,status_code="503"}` incremented instead
+- `lumio_events_errors_total{reason="upstream_timeout"}` incremented
+- `lumio_events_processed_total` did **not** increment — the event was not processed
+
+This is the separation of concerns between the HTTP layer metrics and the business layer metrics: one records the transport outcome, the other records the business outcome.
 
 ---
 
