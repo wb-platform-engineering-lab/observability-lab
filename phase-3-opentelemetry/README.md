@@ -192,10 +192,17 @@ The panels use the same PromQL as Phase 1. The data now flows through the Collec
 
 In Grafana, click **Explore** (compass icon) → select **Tempo** as the datasource.
 
-Under **Query type**, select **Search**. Set:
-- **Service name:** `lumio-api`
+> **Grafana 11 note:** The form-based **Search** query type may produce a TraceQL parse error in Grafana 11 with Tempo 2.5. Use **TraceQL** mode instead — it is more reliable and teaches you the actual query language.
+
+Under **Query type**, select **TraceQL**. Enter:
+
+```
+{resource.service.name="lumio-api"}
+```
 
 Click **Run query**. You will see a list of recent traces, each with a trace ID, root span name, duration, and timestamp.
+
+> **What this query means:** `{}` is a span selector. `resource.service.name` is a resource-scoped attribute — metadata attached to the process, not to individual spans. This query returns all spans where the sending service is `lumio-api`.
 
 ### Step 2: Open a trace
 
@@ -210,10 +217,13 @@ The root span is created automatically. The child span was added by the develope
 
 ### Step 3: Find a failed trace
 
-In the search, add a filter:
-- **Tags:** `error = true`
+Run a TraceQL query filtering for error spans:
 
-Run the query. These are the ~2% of requests that hit the simulated error path. Open one. The trace shows:
+```
+{resource.service.name="lumio-api" && span.error=true}
+```
+
+These are the ~2% of requests that hit the simulated error path. Open one. The trace shows:
 - `error = true` on the `process-event` span
 - `error.reason = validation_error` (or `schema_mismatch` / `timeout`)
 
@@ -221,7 +231,11 @@ Compare to what you had before Phase 3: the metrics showed an error rate of ~2%,
 
 ### Step 4: Open a slow trace
 
-Look at traces for `GET /events/summary`. The duration is between 50–200ms. Open a long one (> 150ms).
+Filter for slow `/events/summary` requests:
+
+```
+{resource.service.name="lumio-api" && name="/events/summary"} | duration > 150ms
+```
 
 ```
 GET /events/summary  (root span)  180ms
@@ -231,6 +245,8 @@ GET /events/summary  (root span)  180ms
 ```
 
 The nested spans show where time was spent. `fetch-counts` consumed 140ms of the 170ms. Without traces, you would only know the request was slow — not that `fetch-counts` was the bottleneck.
+
+> **TraceQL pipeline operator:** The `|` after the span selector is a pipeline operator. `duration > 150ms` filters the result set to only traces whose root span duration exceeds 150ms — the same idea as a Unix pipe.
 
 ---
 
