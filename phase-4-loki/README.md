@@ -69,6 +69,60 @@ Logs and metrics live in separate systems (Loki and Prometheus) but are surfaced
 
 ---
 
+## How Loki uses labels
+
+Loki identifies a **log stream** by its label set. Every unique combination of label values is a separate stream — a separate sequence of compressed log chunks on disk.
+
+```
+Docker container stdout
+│
+│  {"level":"WARNING","event_type":"checkout","error_reason":"timeout",...}
+│
+▼
+┌─────────────────────────────────────────────────────────────┐
+│  Promtail pipeline                                          │
+│                                                             │
+│  1. relabel (Docker SD)          2. json stage             │
+│     __meta_docker_compose_service   extracts from JSON:    │
+│     ──────────────────────────►     level      = "WARNING" │
+│     service = "api"                 event_type = "checkout" │
+│     container = "app-api-1"         error_reason= "timeout" │
+│     stream  = "stdout"                                      │
+│                                  3. labels stage            │
+│                                     promotes to labels:     │
+│                                     level      ✓           │
+│                                     event_type ✓           │
+│                                     error_reason ✗ (stays  │
+│                                       in log content)       │
+└─────────────────────────────────────────────────────────────┘
+│
+│  Final label set attached to every log line:
+│  {
+│    service    = "api"        ← Docker Compose service name
+│    container  = "app-api-1"  ← Docker container name
+│    stream     = "stdout"     ← stdout or stderr
+│    level      = "WARNING"    ← promoted from JSON field
+│    event_type = "checkout"   ← promoted from JSON field
+│  }
+│
+▼
+┌──────────────────────────────────────────────────────────────┐
+│  Loki stream index (what gets indexed — fast to query)       │
+│                                                              │
+│  stream key: service=api, level=WARNING, event_type=checkout │
+│  stream key: service=api, level=INFO,    event_type=purchase │
+│  stream key: service=api, level=WARNING, event_type=refund   │
+│  ...                                                         │
+│                                                              │
+│  Log line content (not indexed — scanned on filter queries)  │
+│  {"error_reason":"timeout","duration_ms":47.2,...}           │
+└──────────────────────────────────────────────────────────────┘
+```
+
+**Why `error_reason` is not a label:** it could have hundreds of unique values. Each unique label combination is a separate stream — too many streams degrades Loki's performance. Fields with bounded values (`level`: ~5 values, `event_type`: ~10 values) are good label candidates. Fields with unbounded values stay in log content and are queried with `| json | error_reason = "..."`.
+
+---
+
 ## Repository structure
 
 ```
@@ -421,6 +475,109 @@ Loki is the right choice when you control the log format (structured JSON) and c
 | Log alerting not configured | You cannot be paged based on log content | Phase 5 |
 | No trace ID in logs | Cannot correlate a specific log line to its trace | Phase 5 |
 | Logs retained only 72h | Long-term log analysis not possible in this config | Phase 9 |
+
+---
+
+## Loki on Kubernetes
+
+The label model is identical to what this lab uses — the only difference is where labels come from and how the agent is deployed.
+
+### Deployment: DaemonSet instead of a sidecar
+
+In Docker Compose, Promtail runs as a single container and reads logs via the Docker socket. In Kubernetes, Promtail runs as a **DaemonSet** — one pod per node — and reads directly from `/var/log/pods/` on the node filesystem. No Docker socket needed.
+
+```
+Node: worker-3
+│
+├── /var/log/pods/
+│   ├── production_lumio-api-7d9f4b-xk2p_<uid>/api/0.log
+│   ├── production_lumio-worker-5c8d2a-lm7r_<uid>/worker/0.log
+│   └── ...
+│
+└── Promtail pod (DaemonSet)
+      reads log files above
+      queries Kubernetes API for pod metadata
+      pushes to Loki
+```
+
+### Label sources: Kubernetes SD instead of Docker SD
+
+Promtail uses `kubernetes_sd_configs` to discover pods and attach metadata. The available meta-labels are richer than Docker's:
+
+```
+__meta_kubernetes_namespace              → "production"
+__meta_kubernetes_pod_name              → "lumio-api-7d9f4b-xk2p"
+__meta_kubernetes_pod_node_name         → "worker-3"
+__meta_kubernetes_pod_container_name    → "api"
+__meta_kubernetes_pod_label_app         → "lumio-api"      (from pod spec)
+__meta_kubernetes_pod_label_version     → "v2.1.0"         (from pod spec)
+```
+
+A typical relabelling config promotes these to Loki labels:
+
+```yaml
+relabel_configs:
+  - source_labels: [__meta_kubernetes_namespace]
+    target_label: namespace
+  - source_labels: [__meta_kubernetes_pod_label_app]
+    target_label: app
+  - source_labels: [__meta_kubernetes_pod_container_name]
+    target_label: container
+  - source_labels: [__meta_kubernetes_pod_node_name]
+    target_label: node
+```
+
+### The resulting label set
+
+```
+Pod stdout (JSON log line)
+│
+▼
+┌────────────────────────────────────────────────────────────────┐
+│  Promtail pipeline (Kubernetes)                                │
+│                                                                │
+│  1. Kubernetes SD relabelling         2. json stage            │
+│     namespace  = "production"            level      = "WARNING"│
+│     app        = "lumio-api"             event_type = "checkout"│
+│     container  = "api"                                         │
+│     node       = "worker-3"           3. labels stage          │
+│                                          level      ✓          │
+│                                          event_type ✓          │
+└────────────────────────────────────────────────────────────────┘
+│
+│  Final label set:
+│  {
+│    namespace  = "production"   ← Kubernetes namespace
+│    app        = "lumio-api"    ← pod label (bounded — safe)
+│    container  = "api"          ← container name
+│    node       = "worker-3"     ← node name
+│    level      = "WARNING"      ← promoted from JSON
+│    event_type = "checkout"     ← promoted from JSON
+│  }
+│
+▼
+Loki
+```
+
+### The cardinality trap: never promote `pod` to a label
+
+`pod` names include a random suffix (`lumio-api-7d9f4b-xk2p`) and rotate on every deploy. Promoting it to a Loki label creates a new stream on every rollout and leaves orphaned streams behind. Over weeks, this silently degrades Loki's performance.
+
+| Label | Safe? | Reason |
+|---|---|---|
+| `namespace` | Yes | Small, bounded set |
+| `app` | Yes | One value per service |
+| `container` | Yes | One value per container spec |
+| `node` | Usually | Bounded by cluster size — OK for mid-size clusters |
+| `pod` | **No** | Rotates on every deploy — unbounded over time |
+| `pod_ip` | **No** | Unique per pod instance |
+| `version` | Caution | Bounded if you clean up old streams; accumulates otherwise |
+
+Use `app` (or equivalent) to identify a service, not `pod`. If you need to find logs from a specific pod during an incident, filter by content (`|= "lumio-api-7d9f4b"`) rather than by label.
+
+### Grafana Alloy
+
+In newer Grafana stacks, [Grafana Alloy](https://grafana.com/docs/alloy/) replaces Promtail as the recommended log collector. The pipeline stage model (`json`, `labels`, `drop`) is the same — Alloy uses a River/Alloy config syntax instead of YAML, but the label cardinality rules and stream model are unchanged.
 
 ---
 
