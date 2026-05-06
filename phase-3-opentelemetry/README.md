@@ -231,10 +231,10 @@ Compare to what you had before Phase 3: the metrics showed an error rate of ~2%,
 
 ### Step 4: Open a slow trace
 
-Filter for slow `/events/summary` requests:
+Filter for slow `/events/summary` requests by putting `duration` inside the span selector:
 
 ```
-{resource.service.name="lumio-api" && name="/events/summary"} | duration > 150ms
+{resource.service.name="lumio-api" && name="/events/summary" && duration > 150ms}
 ```
 
 ```
@@ -246,7 +246,7 @@ GET /events/summary  (root span)  180ms
 
 The nested spans show where time was spent. `fetch-counts` consumed 140ms of the 170ms. Without traces, you would only know the request was slow — not that `fetch-counts` was the bottleneck.
 
-> **TraceQL pipeline operator:** The `|` after the span selector is a pipeline operator. `duration > 150ms` filters the result set to only traces whose root span duration exceeds 150ms — the same idea as a Unix pipe.
+> **`duration` in TraceQL:** `duration` is a built-in span attribute representing how long the span took. In Tempo 2.5, it must be used inside `{}` alongside other span conditions. The pipeline `|` syntax for duration filtering was introduced in a later Tempo release.
 
 ---
 
