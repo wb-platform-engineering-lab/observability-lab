@@ -139,21 +139,31 @@ chmod +x load.sh && ./load.sh
 
 ### Step 3: Verify the pipeline is flowing
 
-Check the Collector is receiving data:
+Check the Collector is receiving and exporting traces. In v0.103+ the debug exporter uses structured log fields instead of the old `TracesExporter` message:
 
 ```bash
-docker compose logs otelcol | grep -E "TracesExporter|MetricsExporter" | tail -10
+docker compose logs otelcol | grep '"data_type": "traces"' | tail -5
 ```
 
-You should see log lines like `"msg":"Traces Exporter"` with non-zero span counts.
+You should see lines like:
 
-Check Prometheus is scraping the Collector's metrics endpoint:
+```
+otelcol  | 2024-... info  Traces  {"kind": "exporter", "data_type": "traces", "name": "debug", "resource spans": 1, "spans": 3}
+```
+
+If you get no output, check the collector started cleanly and the app is sending data:
+
+```bash
+docker compose logs otelcol 2>&1 | tail -20
+```
+
+The definitive check that the full pipeline is working is the Prometheus scrape endpoint on the Collector:
 
 ```bash
 curl -s http://localhost:8889/metrics | grep lumio | head -20
 ```
 
-This is the Collector's Prometheus exporter — not the app. The app has no `/metrics` endpoint in Phase 3; it only speaks OTLP.
+If this returns metric lines, data is flowing end-to-end. This is the Collector's Prometheus exporter — not the app. The app has no `/metrics` endpoint in Phase 3; it only speaks OTLP.
 
 ### Step 4: Open Grafana
 
