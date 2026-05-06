@@ -139,31 +139,37 @@ chmod +x load.sh && ./load.sh
 
 ### Step 3: Verify the pipeline is flowing
 
-Check the Collector is receiving and exporting traces. In v0.103+ the debug exporter uses structured log fields instead of the old `TracesExporter` message:
+The Collector only exports data after the app has received requests. Make sure `load.sh` is still running from Step 2, then wait ~15 seconds for the first metric export cycle.
+
+**Check the API is receiving requests:**
 
 ```bash
-docker compose logs otelcol | grep '"data_type": "traces"' | tail -5
+docker compose logs api | tail -5
+```
+
+You should see `event processed` log lines. If the API is idle, no metrics will be exported.
+
+**Check the Collector is exporting spans** (these lines only appear after real traffic — not on startup):
+
+```bash
+docker compose logs otelcol | grep '"spans"' | tail -5
 ```
 
 You should see lines like:
 
 ```
-otelcol  | 2024-... info  Traces  {"kind": "exporter", "data_type": "traces", "name": "debug", "resource spans": 1, "spans": 3}
+otelcol-1  | ... info  Traces  {"kind": "exporter", "data_type": "traces", "name": "debug", "resource spans": 1, "spans": 3}
 ```
 
-If you get no output, check the collector started cleanly and the app is sending data:
+> **Note:** The Collector logs many lines containing `"data_type": "traces"` at startup (component initialisation). Only lines that also contain `"spans"` indicate actual data being exported.
 
-```bash
-docker compose logs otelcol 2>&1 | tail -20
-```
-
-The definitive check that the full pipeline is working is the Prometheus scrape endpoint on the Collector:
+**The definitive end-to-end check** — if this returns `lumio_*` metric lines, the full pipeline is working:
 
 ```bash
 curl -s http://localhost:8889/metrics | grep lumio | head -20
 ```
 
-If this returns metric lines, data is flowing end-to-end. This is the Collector's Prometheus exporter — not the app. The app has no `/metrics` endpoint in Phase 3; it only speaks OTLP.
+This is the Collector's Prometheus exporter — not the app. The app has no `/metrics` endpoint in Phase 3; it only speaks OTLP.
 
 ### Step 4: Open Grafana
 
