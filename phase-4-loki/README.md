@@ -127,10 +127,10 @@ Should return `ready`.
 ### Verify Promtail is scraping
 
 ```bash
-curl -s http://localhost:9080/targets | python3 -m json.tool | grep -A3 "Labels"
+curl -s http://localhost:9080/targets | grep -o 'service="[^"]*"'
 ```
 
-You should see an entry for the `api` container with labels `service="api"`.
+You should see `service="api"` in the output, confirming Promtail has discovered the API container.
 
 ### Generate load
 
@@ -400,7 +400,7 @@ Loki is the right choice when you control the log format (structured JSON) and c
 |---|---|
 | `docker compose up -d --build` | Start all 7 services |
 | `curl http://localhost:3100/ready` | Check Loki health |
-| `curl http://localhost:9080/targets` | Check Promtail scrape targets |
+| `curl -s http://localhost:9080/targets \| grep -o 'service="[^"]*"'` | Check Promtail scrape targets |
 | `./break.sh` | Set error rate to 50% |
 | `./break.sh 0.02` | Restore normal error rate |
 | `docker compose logs -f api \| head -5` | See raw JSON logs from the API |
